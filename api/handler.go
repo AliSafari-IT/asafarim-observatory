@@ -16,7 +16,7 @@ import (
 	"github.com/AliSafari-IT/asafarim-observatory/repository"
 )
 
-const Version = "0.2.0"
+const Version = "0.2.1"
 
 type Config struct {
 	Root           string
@@ -63,7 +63,10 @@ func New(config Config) (http.Handler, error) {
 	}
 	// Bound concurrent Python processes; the dashboard can retry a busy response.
 	analysisSlot := make(chan struct{}, 1)
-	summary := newSummaryHandler(config, analysisSlot)
+	summary, err := newSummaryHandler(config, analysisSlot)
+	if err != nil {
+		return nil, err
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")

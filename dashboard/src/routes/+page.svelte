@@ -158,7 +158,7 @@
       <p>Signals from your code.<br />A little more perspective.</p>
     </div>
     <div class="sidebar-footer">
-      Go <span>↔</span> Python <span>↔</span> Svelte<small>Dashboard v0.2.0</small>
+      Go <span>↔</span> Python <span>↔</span> Svelte<small>Dashboard v0.2.1</small>
     </div>
   </aside>
 
@@ -428,7 +428,7 @@
         </details>
       </section>
       <footer>
-        <span>ASafariM Observatory <span class="footer-separator">/</span> Dashboard v0.2.0</span
+        <span>ASafariM Observatory <span class="footer-separator">/</span> Dashboard v0.2.1</span
         ><span
           >Saved data · {refreshed
             ? `View refreshed ${refreshed.toLocaleTimeString()}`

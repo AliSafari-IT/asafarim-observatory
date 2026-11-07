@@ -15,10 +15,13 @@ import (
 )
 
 // Reading the summary never calls a model. Generation is an explicit POST and
-// only the most recent successful result is kept in memory until server restart.
-func newSummaryHandler(config Config, slot chan struct{}) http.Handler {
+// the latest successful result is persisted before replacing the memory cache.
+func newSummaryHandler(config Config, slot chan struct{}) (http.Handler, error) {
 	var mu sync.RWMutex
-	var cached json.RawMessage
+	cached, err := loadSummary(config)
+	if err != nil {
+		return nil, err
+	}
 	state := func(w http.ResponseWriter) {
 		mu.RLock()
 		defer mu.RUnlock()
@@ -86,20 +89,17 @@ func newSummaryHandler(config Config, slot chan struct{}) http.Handler {
 			}
 			return
 		}
-		var report struct {
-			SchemaVersion int               `json:"schema_version"`
-			Provider      string            `json:"provider"`
-			Headline      string            `json:"headline"`
-			SnapshotCount int               `json:"snapshot_count"`
-			Findings      []json.RawMessage `json:"findings"`
-		}
-		if json.Unmarshal(result, &report) != nil || report.SchemaVersion != 1 || report.Provider != "openai" || report.Headline == "" || report.SnapshotCount < 1 || report.Findings == nil {
+		if !validSummary(result) {
 			writeError(w, 502, "invalid_summary", "The analyzer returned an invalid summary. The previous summary is preserved.")
+			return
+		}
+		if err := saveSummary(config, result); err != nil {
+			writeError(w, 500, "summary_storage_failed", "Cannot save the generated summary. Previous summary preserved; provider usage may have been charged.")
 			return
 		}
 		mu.Lock()
 		cached = append(json.RawMessage(nil), result...)
 		mu.Unlock()
 		state(w)
-	})
+	}), nil
 }
