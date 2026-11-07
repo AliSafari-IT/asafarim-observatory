@@ -99,8 +99,8 @@
       </details>
       <p class="ai-meta">
         AI-generated interpretation of saved observations. Review the evidence; these metrics do not
-        measure commits, productivity or code quality. The summary remains in memory until the API
-        restarts.
+        measure commits, productivity or code quality. The latest successful summary is saved with
+        this workspace’s history and survives API restarts.
       </p>
     </div>
   {:else}<p class="ai-empty">
