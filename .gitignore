@@ -6,3 +6,6 @@
 __pycache__/
 *.py[cod]
 .venv/
+node_modules/
+dashboard/.svelte-kit/
+dashboard/build/
