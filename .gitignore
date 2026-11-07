@@ -3,6 +3,9 @@
 /.observatory/
 .env
 .env.*
+!/.env.prod.example
+!/.env.prod.age
+/.age/
 __pycache__/
 *.py[cod]
 .venv/

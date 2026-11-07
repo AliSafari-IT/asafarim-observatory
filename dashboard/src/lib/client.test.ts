@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { APIError, filterRepositories, readJSON, statusOf, type Repository } from './client.ts';
+import {
+  APIError,
+  filterRepositories,
+  readJSON,
+  statusOf,
+  generateSummary,
+  type Repository
+} from './client.ts';
 
 const repositories: Repository[] = [
   { name: 'api', path: '/repos/api', branch: 'main', detached: false, changed_files: 0 },
@@ -20,6 +27,23 @@ const repositories: Repository[] = [
     error: 'git failed'
   }
 ];
+
+test('paid summary requests require an explicit POST and never retry', async () => {
+  let calls = 0;
+  const transport = (async (path, options) => {
+    calls++;
+    assert.equal(path, '/api/summary');
+    assert.equal(options?.method, 'POST');
+    assert.equal(options?.body, '{}');
+    assert.equal(new Headers(options?.headers).get('X-Observatory-Request'), 'generate-summary');
+    return new Response('{"error":{"message":"busy"}}', {
+      status: 503,
+      headers: { 'Retry-After': '0' }
+    });
+  }) as typeof fetch;
+  await assert.rejects(generateSummary(new AbortController().signal, transport), /busy/);
+  assert.equal(calls, 1);
+});
 
 test('search and status filters compose; unavailable scans are never clean', () => {
   assert.deepEqual(

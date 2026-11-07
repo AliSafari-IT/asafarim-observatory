@@ -3,9 +3,10 @@ import { defineConfig } from 'vite';
 import adapter from '@sveltejs/adapter-static';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 
+const target = process.env.OBSERVATORY_API_URL ?? 'http://127.0.0.1:8080';
 const proxy = {
-  '/api': 'http://127.0.0.1:8080',
-  '/healthz': 'http://127.0.0.1:8080'
+  '/api': target,
+  '/healthz': target
 };
 
 export default defineConfig({

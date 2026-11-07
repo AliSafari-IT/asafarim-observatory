@@ -16,14 +16,15 @@ import (
 	"github.com/AliSafari-IT/asafarim-observatory/repository"
 )
 
-const Version = "0.1.0"
+const Version = "0.2.0"
 
 type Config struct {
-	Root     string
-	History  string
-	Analyzer string
-	Python   string
-	Timeout  time.Duration
+	Root           string
+	History        string
+	Analyzer       string
+	Python         string
+	Timeout        time.Duration
+	SummaryTimeout time.Duration
 }
 
 // New pins all file paths at startup. HTTP requests cannot choose workspaces,
@@ -31,6 +32,12 @@ type Config struct {
 func New(config Config) (http.Handler, error) {
 	if config.Timeout <= 0 {
 		return nil, errors.New("analysis timeout must be positive")
+	}
+	if config.SummaryTimeout == 0 {
+		config.SummaryTimeout = 60 * time.Second
+	}
+	if config.SummaryTimeout < 0 {
+		return nil, errors.New("summary timeout must be positive")
 	}
 	for _, path := range []*string{&config.Root, &config.History, &config.Analyzer} {
 		absolute, err := filepath.Abs(*path)
@@ -56,10 +63,15 @@ func New(config Config) (http.Handler, error) {
 	}
 	// Bound concurrent Python processes; the dashboard can retry a busy response.
 	analysisSlot := make(chan struct{}, 1)
+	summary := newSummaryHandler(config, analysisSlot)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
+		if r.URL.Path == "/api/summary" {
+			summary.ServeHTTP(w, r)
+			return
+		}
 		if r.URL.Path != "/healthz" && r.URL.Path != "/api/snapshot" && r.URL.Path != "/api/analysis" {
 			writeError(w, http.StatusNotFound, "not_found", "Unknown endpoint.")
 			return
@@ -110,11 +122,8 @@ func New(config Config) (http.Handler, error) {
 }
 
 func runAnalysis(ctx context.Context, config Config) (json.RawMessage, error) {
-	cmd := exec.CommandContext(ctx, config.Python, config.Analyzer, "--root", config.Root, "--history", config.History, "--format", "json")
-	cmd.WaitDelay = time.Second
-	output := &limitedBuffer{limit: 8 << 20}
-	cmd.Stdout = output
-	if err := cmd.Run(); err != nil {
+	output, err := runPython(ctx, config)
+	if err != nil {
 		return nil, err
 	}
 	var report struct {
@@ -123,13 +132,25 @@ func runAnalysis(ctx context.Context, config Config) (json.RawMessage, error) {
 		SnapshotCount int             `json:"snapshot_count"`
 		Repositories  json.RawMessage `json:"repositories"`
 	}
-	if err := json.Unmarshal(output.Bytes(), &report); err != nil {
+	if err := json.Unmarshal(output, &report); err != nil {
 		return nil, err
 	}
 	if report.SchemaVersion != 1 || report.Root != config.Root || report.SnapshotCount < 1 || len(report.Repositories) == 0 || report.Repositories[0] != '[' {
 		return nil, errors.New("unexpected analysis report")
 	}
-	return json.RawMessage(output.Bytes()), nil
+	return json.RawMessage(output), nil
+}
+
+func runPython(ctx context.Context, config Config, extra ...string) ([]byte, error) {
+	args := append([]string{config.Analyzer, "--root", config.Root, "--history", config.History, "--format", "json"}, extra...)
+	cmd := exec.CommandContext(ctx, config.Python, args...)
+	cmd.WaitDelay = time.Second
+	output := &limitedBuffer{limit: 8 << 20}
+	cmd.Stdout = output
+	if err := cmd.Run(); err != nil {
+		return nil, err
+	}
+	return output.Bytes(), nil
 }
 
 type limitedBuffer struct {

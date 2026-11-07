@@ -36,6 +36,43 @@ export interface Analysis {
   repositories: RepositorySummary[];
 }
 
+export interface AISummary {
+  schema_version: number;
+  provider: string;
+  model: string;
+  generated_at: string;
+  period_start: string;
+  period_end: string;
+  snapshot_count: number;
+  headline: string;
+  findings: { text: string; evidence_ids: string[] }[];
+  evidence: (Omit<RepositorySummary, 'latest_error'> & { id: string })[];
+  sources: string[];
+}
+
+export interface AISummaryState {
+  configured: boolean;
+  summary: AISummary | null;
+}
+
+// This request is deliberately separate from readJSON: paid POSTs are never retried.
+export async function generateSummary(
+  signal: AbortSignal,
+  fetcher: typeof fetch = fetch
+): Promise<AISummaryState> {
+  const response = await fetcher('/api/summary', {
+    method: 'POST',
+    signal,
+    cache: 'no-store',
+    headers: { 'Content-Type': 'application/json', 'X-Observatory-Request': 'generate-summary' },
+    body: '{}'
+  });
+  const body = await response.json();
+  if (!response.ok)
+    throw new APIError(response.status, body.error?.message ?? 'Summary generation failed.');
+  return body as AISummaryState;
+}
+
 export class APIError extends Error {
   status: number;
   constructor(status: number, message: string) {

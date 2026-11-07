@@ -1,9 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import SummaryPanel from '#lib/SummaryPanel.svelte';
   import {
     APIError,
     filterRepositories,
     readJSON,
+    generateSummary,
+    type AISummaryState,
     statusOf,
     type Analysis,
     type Snapshot
@@ -21,6 +24,10 @@
   let expanded = $state<string | null>(null);
   let refreshed = $state<Date | null>(null);
   let controller: AbortController | undefined;
+  let summaryController: AbortController | undefined;
+  let aiState = $state<AISummaryState | null>(null);
+  let aiError = $state('');
+  let generating = $state(false);
 
   const repositories = $derived(snapshot?.repositories ?? []);
   const changed = $derived(
@@ -57,15 +64,16 @@
   }
 
   async function refresh() {
-    if (loading) return;
+    if (loading || generating) return;
     loading = true;
     controller = new AbortController();
     const timer = setTimeout(() => controller?.abort(), 20_000);
     try {
-      const [h, s, a] = await Promise.allSettled([
+      const [h, s, a, ai] = await Promise.allSettled([
         readJSON<{ status: string; version: string }>('/healthz', controller.signal),
         readJSON<Snapshot>('/api/snapshot', controller.signal),
-        readJSON<Analysis>('/api/analysis', controller.signal)
+        readJSON<Analysis>('/api/analysis', controller.signal),
+        readJSON<AISummaryState>('/api/summary', controller.signal)
       ]);
       health = h.status === 'fulfilled' ? h.value : null;
       snapshotError = s.status === 'rejected' ? message(s.reason) : '';
@@ -74,6 +82,15 @@
         s.status === 'rejected' && s.reason instanceof APIError && s.reason.status === 404;
       if (s.status === 'fulfilled') snapshot = s.value;
       if (a.status === 'fulfilled') analysis = a.value;
+      if (ai.status === 'fulfilled') {
+        aiState = ai.value;
+        aiError = '';
+      } else {
+        aiError =
+          ai.reason instanceof APIError && ai.reason.status === 404
+            ? 'Restart the updated API server to enable AI summaries.'
+            : message(ai.reason);
+      }
       refreshed = new Date();
     } finally {
       clearTimeout(timer);
@@ -81,9 +98,31 @@
     }
   }
 
+  async function generate() {
+    if (generating || loading) return;
+    generating = true;
+    aiError = '';
+    summaryController = new AbortController();
+    const timer = setTimeout(() => summaryController?.abort(), 70_000);
+    try {
+      aiState = await generateSummary(summaryController.signal);
+    } catch (error) {
+      aiError =
+        error instanceof APIError
+          ? error.message
+          : 'Summary generation did not complete. Check the API connection; the previous summary is preserved.';
+    } finally {
+      clearTimeout(timer);
+      generating = false;
+    }
+  }
+
   onMount(() => {
     void refresh();
-    return () => controller?.abort();
+    return () => {
+      controller?.abort();
+      summaryController?.abort();
+    };
   });
 </script>
 
@@ -119,7 +158,7 @@
       <p>Signals from your code.<br />A little more perspective.</p>
     </div>
     <div class="sidebar-footer">
-      Go <span>↔</span> Python <span>↔</span> Svelte<small>Dashboard v0.1.0</small>
+      Go <span>↔</span> Python <span>↔</span> Svelte<small>Dashboard v0.2.0</small>
     </div>
   </aside>
 
@@ -142,7 +181,7 @@
           <h1>Workspace overview<span>.</span></h1>
           <p>A clear view of your repositories, one saved snapshot at a time.</p>
         </div>
-        <button class="refresh" onclick={refresh} disabled={loading}
+        <button class="refresh" onclick={refresh} disabled={loading || generating}
           ><span aria-hidden="true" class:spinning={loading}>↻</span>{loading
             ? 'Refreshing…'
             : 'Refresh view'}</button
@@ -271,6 +310,14 @@
         </section>
       </div>
 
+      <SummaryPanel
+        summaryState={aiState}
+        error={aiError}
+        {generating}
+        disabled={loading || !snapshot}
+        onGenerate={generate}
+      />
+
       <section class="panel repository-panel" id="repositories">
         <div class="panel-heading">
           <div>
@@ -381,7 +428,7 @@
         </details>
       </section>
       <footer>
-        <span>ASafariM Observatory <span class="footer-separator">/</span> Dashboard v0.1.0</span
+        <span>ASafariM Observatory <span class="footer-separator">/</span> Dashboard v0.2.0</span
         ><span
           >Saved data · {refreshed
             ? `View refreshed ${refreshed.toLocaleTimeString()}`

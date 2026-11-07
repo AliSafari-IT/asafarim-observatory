@@ -2,11 +2,21 @@
   "name": "asafarim-observatory",
   "private": true,
   "packageManager": "pnpm@12.16.1",
-  "engines": { "node": ">=24 <25" },
+  "engines": {
+    "node": ">=24 <25"
+  },
   "scripts": {
     "dev": "pnpm --dir dashboard dev",
     "check": "pnpm --dir dashboard check",
     "test": "pnpm --dir dashboard test",
-    "build": "pnpm --dir dashboard build"
+    "build": "pnpm --dir dashboard build",
+    "env:init-key": "envage init-key",
+    "env:status": "envage status",
+    "env:encrypt": "node scripts/production-env.mjs encrypt",
+    "api:prod": "node scripts/production-env.mjs start",
+    "test:env": "node --test scripts/production-env.test.mjs"
+  },
+  "dependencies": {
+    "@asafarim/envage": "0.5.0"
   }
 }
