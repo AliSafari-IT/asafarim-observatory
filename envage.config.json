@@ -1,0 +1,6 @@
+{
+  "apps": ["."],
+  "envs": ["prod"],
+  "keyFile": ".age/key.txt",
+  "keyPubFile": ".age/key.pub"
+}

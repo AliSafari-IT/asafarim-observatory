@@ -30,6 +30,7 @@ func run() error {
 	analyzer := flag.String("analyzer", "analysis/analyze.py", "Python analyzer script")
 	python := flag.String("python", "python3", "Python executable")
 	timeout := flag.Duration("timeout", 10*time.Second, "analysis deadline")
+	summaryTimeout := flag.Duration("summary-timeout", 60*time.Second, "AI summary generation deadline")
 	version := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 	if flag.NArg() != 0 {
@@ -39,10 +40,13 @@ func run() error {
 		fmt.Println("observatory-api " + api.Version)
 		return nil
 	}
+	if *summaryTimeout <= 0 {
+		return errors.New("summary timeout must be positive")
+	}
 	if err := validateAddress(*address); err != nil {
 		return err
 	}
-	handler, err := api.New(api.Config{Root: *root, History: *history, Analyzer: *analyzer, Python: *python, Timeout: *timeout})
+	handler, err := api.New(api.Config{Root: *root, History: *history, Analyzer: *analyzer, Python: *python, Timeout: *timeout, SummaryTimeout: *summaryTimeout})
 	if err != nil {
 		return err
 	}
@@ -52,7 +56,7 @@ func run() error {
 	}
 	server := &http.Server{
 		Handler: handler, ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout: 10 * time.Second, WriteTimeout: *timeout + 5*time.Second,
+		ReadTimeout: 10 * time.Second, WriteTimeout: max(*timeout, *summaryTimeout) + 5*time.Second,
 		IdleTimeout: 60 * time.Second,
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
