@@ -3,3 +3,6 @@
 /.observatory/
 .env
 .env.*
+__pycache__/
+*.py[cod]
+.venv/

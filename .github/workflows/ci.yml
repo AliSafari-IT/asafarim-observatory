@@ -1,4 +1,4 @@
-name: Go checks
+name: Go and Python checks
 
 on:
   push:
@@ -17,5 +17,8 @@ jobs:
           go-version-file: go.mod
           check-latest: true
           cache: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - run: sh scripts/check.sh
       - run: go test -race ./...
