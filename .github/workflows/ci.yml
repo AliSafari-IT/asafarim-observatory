@@ -1,4 +1,4 @@
-name: Go and Python checks
+name: Observatory checks
 
 on:
   push:
@@ -22,3 +22,15 @@ jobs:
           python-version: '3.12'
       - run: sh scripts/check.sh
       - run: go test -race ./...
+  dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm test
+      - run: pnpm build

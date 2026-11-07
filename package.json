@@ -1,0 +1,12 @@
+{
+  "name": "asafarim-observatory",
+  "private": true,
+  "packageManager": "pnpm@12.16.1",
+  "engines": { "node": ">=24 <25" },
+  "scripts": {
+    "dev": "pnpm --dir dashboard dev",
+    "check": "pnpm --dir dashboard check",
+    "test": "pnpm --dir dashboard test",
+    "build": "pnpm --dir dashboard build"
+  }
+}
