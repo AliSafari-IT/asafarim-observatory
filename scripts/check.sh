@@ -10,4 +10,6 @@ go vet ./...
 go test ./...
 go build -o bin/observatory ./cmd/observatory
 go build -o bin/observatory-api ./cmd/observatory-api
+go build -o bin/observatory-receive ./cmd/observatory-receive
+go build -o bin/observatory-upload ./cmd/observatory-upload
 python3 -m unittest discover -s analysis/tests -v
