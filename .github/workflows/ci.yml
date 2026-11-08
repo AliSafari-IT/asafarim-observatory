@@ -3,11 +3,27 @@ name: Observatory checks
 on:
   push:
   pull_request:
+    types: [opened, synchronize, reopened, edited]
 
 permissions:
   contents: read
+  issues: read
 
 jobs:
+  originating-issue:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: node --test scripts/check-issue.test.mjs
+      - run: node scripts/check-issue.mjs
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_CREATED_AT: ${{ github.event.pull_request.created_at }}
+          GITHUB_TOKEN: ${{ github.token }}
   container:
     runs-on: ubuntu-latest
     steps:
