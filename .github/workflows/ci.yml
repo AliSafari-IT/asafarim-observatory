@@ -40,4 +40,5 @@ jobs:
       - run: pnpm check
       - run: pnpm test
       - run: pnpm test:env
+      - run: pnpm test:gateway
       - run: pnpm build

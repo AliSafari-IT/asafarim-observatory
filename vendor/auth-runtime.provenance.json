@@ -1,0 +1,15 @@
+{
+  "repository": "AliSafari-IT/asafarim-os",
+  "commit": "b102f6f252bf616864e142292ccafd7aacedb0d1",
+  "package": "@asafarim/auth-runtime",
+  "version": "0.1.0",
+  "archive_sha256": "674bf0853751788297ded3f91e360cdb3aea68da1300b941e8f4e04166eff4cf",
+  "build": "TypeScript emit of unchanged upstream src with ES2022/NodeNext and declarations; upstream package is private and not registry-published.",
+  "smtp_source": {
+    "repository": "AliSafari-IT/asafarim-os",
+    "commit": "b102f6f252bf616864e142292ccafd7aacedb0d1",
+    "path": "packages/smtp/src/smtp.ts",
+    "local_path": "gateway/smtp.ts",
+    "note": "Unchanged shared TLS SMTP client; Node 24 native TypeScript stripping."
+  }
+}
