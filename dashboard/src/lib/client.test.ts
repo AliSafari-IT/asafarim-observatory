@@ -111,3 +111,13 @@ test('busy analysis retries once and remains cancellable while waiting', async (
   controller.abort();
   await assert.rejects(waiting, { name: 'AbortError' });
 });
+
+test('VPS summary generation selects its workspace without retrying or changing the local default', async () => {
+  let called = '';
+  const fetcher = (async (url: string) => {
+    called = url;
+    return new Response(JSON.stringify({ configured: true, summary: null }));
+  }) as typeof fetch;
+  await generateSummary(new AbortController().signal, fetcher, 'csrf-fixture', 'vps');
+  assert.equal(called, '/api/summary?workspace=vps');
+});

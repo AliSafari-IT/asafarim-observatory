@@ -1,0 +1,375 @@
+/*
+ * @asafarim/theme: the ASafariM OS look, shared by asafarim.site, id.asafarim.site and every app.
+ * Load it before the page's own stylesheet; the page keeps only what is its own.
+ *
+ * Two themes. Light: a cool light-blue page, white cards, navy actions. Dark: charcoal, with light-blue
+ * actions. The top bar (.os-topbar) is charcoal in both. The theme follows the system until someone
+ * picks one with the toggle (theme.js), which sets data-theme="light|dark" on <html> and remembers it in
+ * the asafarim-theme cookie, shared by every *.asafarim.site host.
+ *
+ * Tokens: --bg (page), --card and --card-2 (surfaces), --ink, --muted, --line, --accent (actions, links),
+ * --accent-hover, --accent-ink (text on the accent), --accent-soft (tints), --bad/--bad-ink, --good,
+ * --warn/--warn-bg, --shadow, the top bar's --top-*, and the ASafariM brand's --brand-a/--brand-b
+ * (marks and logos keep them in both themes).
+ */
+:root {
+  color-scheme: light;
+  --bg: #d8e6f1;
+  --card: #ffffff;
+  --card-2: #eef4f9;
+  --ink: #15212b;
+  --muted: #4b5b69;
+  --line: #b9cfdf;
+  --accent: #0f4c6e;
+  --accent-hover: #0b3a55;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(15, 76, 110, 0.1);
+  --bad: #b91c1c;
+  --bad-ink: #ffffff;
+  --good: #166534;
+  --warn: #92400e;
+  --warn-bg: #fef3c7;
+  --shadow: 0 1px 2px rgba(21, 33, 43, 0.06), 0 6px 20px rgba(21, 33, 43, 0.07);
+  --top-bg: #222222;
+  --top-ink: #f4f4f4;
+  --top-muted: #c2c2c2;
+  --top-card: #2e2e2e;
+  --top-line: #404040;
+  --top-accent: #8bb9e2;
+  --top-accent-ink: #0d1b26;
+  --brand-a: #fbbf24;
+  --brand-b: #ea580c;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #262626;
+    --card: #1c1c1c;
+    --card-2: #303030;
+    --ink: #f2f2f2;
+    --muted: #b5b5b5;
+    --line: #3d3d3d;
+    --accent: #7fb0dc;
+    --accent-hover: #a2c7ea;
+    --accent-ink: #0d1b26;
+    --accent-soft: rgba(127, 176, 220, 0.14);
+    --bad: #f87171;
+    --bad-ink: #1c1c1c;
+    --good: #86efac;
+    --warn: #fcd34d;
+    --warn-bg: #3a2e0c;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.25);
+    --top-bg: #161616;
+  }
+}
+/* The same dark values, picked with the toggle (keep the two blocks equal; the package's test checks). */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #262626;
+  --card: #1c1c1c;
+  --card-2: #303030;
+  --ink: #f2f2f2;
+  --muted: #b5b5b5;
+  --line: #3d3d3d;
+  --accent: #7fb0dc;
+  --accent-hover: #a2c7ea;
+  --accent-ink: #0d1b26;
+  --accent-soft: rgba(127, 176, 220, 0.14);
+  --bad: #f87171;
+  --bad-ink: #1c1c1c;
+  --good: #86efac;
+  --warn: #fcd34d;
+  --warn-bg: #3a2e0c;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.25);
+  --top-bg: #161616;
+}
+
+/*
+ * The charcoal top bar. Inside it the page tokens become the bar's, so whatever sits in it (links, the
+ * app switcher and user menu of @asafarim/app-sdk, which read --ink, --card, --line and --accent, menus
+ * included) matches the bar without knowing about it.
+ */
+.os-topbar {
+  --ink: var(--top-ink);
+  --muted: var(--top-muted);
+  --card: var(--top-card);
+  --card-2: var(--top-card);
+  --line: var(--top-line);
+  --accent: var(--top-accent);
+  --accent-hover: var(--top-ink);
+  --accent-ink: var(--top-accent-ink);
+  --accent-soft: rgba(139, 185, 226, 0.16);
+  color-scheme: dark;
+  background: var(--top-bg);
+  color: var(--ink);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+}
+
+/* The light/dark toggle (toggle.html, or <ThemeToggle /> from @asafarim/theme/react): a sun that sets into a moon. */
+.os-theme-toggle {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 2.25rem;
+  height: 2.25rem;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s,
+    transform 0.15s;
+}
+.os-theme-toggle:hover {
+  background: var(--card);
+  border-color: var(--muted);
+}
+.os-theme-toggle:active {
+  transform: scale(0.92);
+}
+.os-theme-toggle:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+.os-theme-toggle svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  overflow: visible;
+}
+.os-theme-rays,
+.os-theme-core {
+  transform-origin: 12px 12px;
+  transition:
+    transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1),
+    opacity 0.25s;
+}
+.os-theme-bite {
+  transform: translate(9px, -9px);
+  transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+/* Dark, by choice or by the system: the moon. */
+:root[data-theme="dark"] .os-theme-rays {
+  transform: rotate(-90deg) scale(0.3);
+  opacity: 0;
+}
+:root[data-theme="dark"] .os-theme-core {
+  transform: scale(1.5);
+}
+:root[data-theme="dark"] .os-theme-bite {
+  transform: translate(0, 0);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .os-theme-rays {
+    transform: rotate(-90deg) scale(0.3);
+    opacity: 0;
+  }
+  :root:not([data-theme="light"]) .os-theme-core {
+    transform: scale(1.5);
+  }
+  :root:not([data-theme="light"]) .os-theme-bite {
+    transform: translate(0, 0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .os-theme-toggle,
+  .os-theme-toggle * {
+    transition: none !important;
+  }
+}
+
+/*
+ * Data tables, the same in every app: <div class="os-table-wrap"><table class="os-table">…</table></div>.
+ * The wrap scrolls sideways when a wide table can't fit, so the page never does. With os-table--stack,
+ * each row becomes a card on a narrow screen: give every <td> a data-label (its column's name), which is
+ * shown in front of the value; a row header (<th scope="row">) becomes the card's title.
+ */
+.os-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+.os-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+.os-table caption {
+  caption-side: top;
+  padding: 12px 14px 4px;
+  text-align: left;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.os-table th,
+.os-table td {
+  padding: 10px 14px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--line);
+}
+.os-table thead th {
+  background: var(--card-2);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.os-table tbody th {
+  color: var(--ink);
+  font-weight: 600;
+}
+.os-table tbody tr:last-child > * {
+  border-bottom: 0;
+}
+.os-table tbody tr:hover > * {
+  background: var(--accent-soft);
+}
+/* Cells that read best on one line (dates, short codes) and ids that are long and alike. */
+.os-nowrap {
+  white-space: nowrap;
+}
+.os-id {
+  display: inline-block;
+  max-width: 16ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+  font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+  font-size: 0.85em;
+}
+/* A cell that takes the room the others leave (a detail column), its content clipped to it, not widening the table. */
+.os-table .os-fill {
+  width: 100%;
+  max-width: 0;
+}
+/* A JSON value: one clipped line, the whole of it (wrapped, never wider than the cell) when opened. */
+.os-json {
+  min-width: 10rem;
+}
+.os-json summary {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  color: var(--muted);
+  font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+  font-size: 0.82rem;
+  list-style: none;
+}
+.os-json summary::-webkit-details-marker {
+  display: none;
+}
+.os-json summary::before {
+  content: "▸ ";
+  color: var(--accent);
+}
+.os-json[open] summary::before {
+  content: "▾ ";
+}
+.os-json pre {
+  margin: 6px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card-2);
+  color: var(--ink);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 720px) {
+  .os-table--stack thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .os-table--stack,
+  .os-table--stack caption,
+  .os-table--stack tbody,
+  .os-table--stack tr,
+  .os-table--stack tbody th,
+  .os-table--stack td {
+    display: block;
+    width: 100%;
+  }
+  .os-table--stack tr {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .os-table--stack tbody tr:last-child {
+    border-bottom: 0;
+  }
+  .os-table--stack tbody th,
+  .os-table--stack td {
+    padding: 4px 14px;
+    border: 0;
+  }
+  /* The label sits in a left column; the cell's own content flows as it is beside it. */
+  .os-table--stack td[data-label] {
+    position: relative;
+    padding-left: calc(14px + max(6rem, 30%));
+  }
+  .os-table--stack td[data-label]::before {
+    content: attr(data-label);
+    position: absolute;
+    left: 14px;
+    top: 6px;
+    width: calc(max(6rem, 30%) - 10px);
+    color: var(--muted);
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .os-table--stack tbody tr:hover > * {
+    background: transparent;
+  }
+  .os-table .os-fill {
+    max-width: none;
+  }
+  .os-json {
+    min-width: 0;
+  }
+}
+
+/*
+ * The legal footer every app ends with (<LegalFooter /> from @asafarim/theme/react): a quiet line of links to the
+ * privacy, cookie and terms pages on asafarim.site. It wraps on a phone.
+ */
+.os-legal {
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.os-legal nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 1.1rem;
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 14px 16px;
+}
+.os-legal a {
+  color: var(--muted);
+  white-space: nowrap;
+}
+.os-legal a:hover,
+.os-legal a:focus-visible {
+  color: var(--accent);
+}

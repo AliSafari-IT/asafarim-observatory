@@ -59,9 +59,10 @@ export interface AISummaryState {
 export async function generateSummary(
   signal: AbortSignal,
   fetcher: typeof fetch = fetch,
-  csrf = ''
+  csrf = '',
+  workspace: 'local' | 'vps' = 'local'
 ): Promise<AISummaryState> {
-  const response = await fetcher('/api/summary', {
+  const response = await fetcher(workspaceURL('/api/summary', workspace), {
     method: 'POST',
     signal,
     cache: 'no-store',
@@ -145,4 +146,9 @@ export function filterRepositories(
 
 export function statusOf(repo: Repository): string {
   return repo.error ? 'Unavailable' : repo.changed_files > 0 ? 'Uncommitted' : 'Clean';
+}
+
+export type WorkspaceID = 'local' | 'vps';
+export function workspaceURL(path: string, workspace: WorkspaceID): string {
+  return workspace === 'vps' ? `${path}?workspace=vps` : path;
 }

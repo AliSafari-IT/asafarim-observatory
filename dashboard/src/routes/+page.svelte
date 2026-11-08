@@ -1,11 +1,14 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import ThemeToggle from '#lib/ThemeToggle.svelte';
   import SummaryPanel from '#lib/SummaryPanel.svelte';
   import {
     APIError,
     filterRepositories,
     readJSON,
     generateSummary,
+    workspaceURL,
+    type WorkspaceID,
     type AISummaryState,
     statusOf,
     type Analysis,
@@ -29,6 +32,20 @@
   let aiError = $state('');
   let generating = $state(false);
   let authenticatedHosting = $state(false);
+  let activeSection = $state('overview');
+  let workspace = $state<WorkspaceID>('local');
+  let workspaces = $state<{ id: WorkspaceID; label: string }[]>([
+    { id: 'local', label: 'Local workspace' }
+  ]);
+  let contextLoaded = false;
+  const workspaceLabel = $derived(
+    workspaces.find((item) => item.id === workspace)?.label ?? 'Local workspace'
+  );
+  const sectionNames: Record<string, string> = {
+    overview: 'Overview',
+    repositories: 'Repositories',
+    history: 'Saved history'
+  };
   let accessRole = $state('viewer');
   let canReview = $state(false);
   let onboarded = $state(true);
@@ -44,6 +61,12 @@
         canReview = context.canReview;
         onboarded = context.onboarded;
         csrf = context.csrf;
+        if (context.workspaces?.length) workspaces = context.workspaces;
+        if (!contextLoaded) {
+          const selected = new URL(location.href).searchParams.get('workspace');
+          if (workspaces.some((item) => item.id === selected)) workspace = selected as WorkspaceID;
+          contextLoaded = true;
+        }
       } else if (authenticatedHosting && [401, 403].includes(response.status))
         location.assign('/login');
       else if (authenticatedHosting && response.status >= 500) {
@@ -96,18 +119,21 @@
       : 'Cannot reach the local API. Start observatory-api, then refresh.';
   }
 
-  async function refresh() {
-    if (loading || generating) return;
+  async function refresh(force = false) {
+    if (!force && (loading || generating)) return;
     loading = true;
-    controller = new AbortController();
-    const timer = setTimeout(() => controller?.abort(), 20_000);
+    const currentController = new AbortController();
+    controller = currentController;
+    const requestedWorkspace = workspace;
+    const timer = setTimeout(() => currentController.abort(), 20_000);
     try {
       const [h, s, a, ai] = await Promise.allSettled([
         readJSON<{ status: string; version: string }>('/healthz', controller.signal),
-        readJSON<Snapshot>('/api/snapshot', controller.signal),
-        readJSON<Analysis>('/api/analysis', controller.signal),
-        readJSON<AISummaryState>('/api/summary', controller.signal)
+        readJSON<Snapshot>(workspaceURL('/api/snapshot', workspace), controller.signal),
+        readJSON<Analysis>(workspaceURL('/api/analysis', workspace), controller.signal),
+        readJSON<AISummaryState>(workspaceURL('/api/summary', workspace), controller.signal)
       ]);
+      if (controller !== currentController || workspace !== requestedWorkspace) return;
       health = h.status === 'fulfilled' ? h.value : null;
       snapshotError = s.status === 'rejected' ? message(s.reason) : '';
       analysisError = a.status === 'rejected' ? message(a.reason) : '';
@@ -127,7 +153,7 @@
       refreshed = new Date();
     } finally {
       clearTimeout(timer);
-      loading = false;
+      if (controller === currentController) loading = false;
     }
   }
 
@@ -135,11 +161,19 @@
     if (!canManage || generating || loading) return;
     generating = true;
     aiError = '';
+    const requestedWorkspace = workspace;
     summaryController = new AbortController();
     const timer = setTimeout(() => summaryController?.abort(), 70_000);
     try {
-      aiState = await generateSummary(summaryController.signal, fetch, csrf);
+      const result = await generateSummary(
+        summaryController.signal,
+        fetch,
+        csrf,
+        requestedWorkspace
+      );
+      if (workspace === requestedWorkspace) aiState = result;
     } catch (error) {
+      if (workspace !== requestedWorkspace) return;
       aiError =
         error instanceof APIError
           ? error.message
@@ -150,10 +184,25 @@
     }
   }
 
+  async function selectWorkspace() {
+    controller?.abort();
+    summaryController?.abort();
+    snapshot = null;
+    analysis = null;
+    aiState = null;
+    aiError = '';
+    snapshotError = '';
+    analysisError = '';
+    const url = new URL(location.href);
+    url.searchParams.set('workspace', workspace);
+    history.replaceState(null, '', url);
+    await refresh(true);
+  }
+
   async function refreshAction() {
     if (!canManage) return;
     if (authenticatedHosting) {
-      const result = await fetch('/api/refresh', {
+      const result = await fetch(workspaceURL('/api/refresh', workspace), {
         method: 'POST',
         headers: { 'X-CSRF-Token': csrf }
       });
@@ -171,6 +220,41 @@
       await checkSession();
       await refresh();
     })();
+    const fromHash = () => {
+      const section = location.hash.slice(1);
+      if (Object.hasOwn(sectionNames, section)) activeSection = section;
+      const requested = new URL(location.href).searchParams.get('workspace') ?? 'local';
+      if (
+        contextLoaded &&
+        requested !== workspace &&
+        workspaces.some((item) => item.id === requested)
+      ) {
+        workspace = requested as WorkspaceID;
+        void selectWorkspace();
+      }
+    };
+    fromHash();
+    window.addEventListener('hashchange', fromHash);
+    window.addEventListener('popstate', fromHash);
+    let frame = 0;
+    const trackScroll = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        let current = 'overview';
+        for (const id of ['repositories', 'history']) {
+          const element = document.getElementById(id);
+          if (element && element.getBoundingClientRect().top <= 180) current = id;
+        }
+        if (
+          window.scrollY > 0 &&
+          window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 4
+        )
+          current = 'history';
+        activeSection = current;
+      });
+    };
+    window.addEventListener('scroll', trackScroll, { passive: true });
     const poll = setInterval(() => void checkSession(), 60_000);
     const foreground = () => {
       if (document.visibilityState === 'visible') void checkSession();
@@ -178,6 +262,10 @@
     document.addEventListener('visibilitychange', foreground);
     return () => {
       clearInterval(poll);
+      window.removeEventListener('hashchange', fromHash);
+      window.removeEventListener('popstate', fromHash);
+      window.removeEventListener('scroll', trackScroll);
+      cancelAnimationFrame(frame);
       document.removeEventListener('visibilitychange', foreground);
       controller?.abort();
       summaryController?.abort();
@@ -203,42 +291,78 @@
     >
     <div class="workspace-label">WORKSPACE</div>
     <nav aria-label="Dashboard navigation">
-      <a href="#overview"
-        ><span aria-hidden="true">◫</span> Overview <span class="nav-dot"></span></a
+      <a
+        href="#overview"
+        class:active={activeSection === 'overview'}
+        aria-current={activeSection === 'overview' ? 'location' : undefined}
+        onclick={() => (activeSection = 'overview')}
+        ><span aria-hidden="true">◫</span> Overview {#if activeSection === 'overview'}<span
+            class="nav-dot"
+          ></span>{/if}</a
       >
-      <a href="#repositories"
+      <a
+        href="#repositories"
+        class:active={activeSection === 'repositories'}
+        aria-current={activeSection === 'repositories' ? 'location' : undefined}
+        onclick={() => (activeSection = 'repositories')}
         ><span aria-hidden="true">⌘</span> Repositories
         <small>{snapshot ? repositories.length : '—'}</small></a
       >
-      <a href="#history"><span aria-hidden="true">◷</span> Saved history</a>
+      <a
+        href="#history"
+        class:active={activeSection === 'history'}
+        aria-current={activeSection === 'history' ? 'location' : undefined}
+        onclick={() => (activeSection = 'history')}
+        ><span aria-hidden="true">◷</span> Saved history</a
+      >
       {#if authenticatedHosting}<a href="/account"
           ><span aria-hidden="true">◎</span> Account &amp; sign out</a
         >{/if}
     </nav>
     <div class="sidebar-note">
-      <span class="tiny-dot"></span> Local workspace
-      <p>Signals from your code.<br />A little more perspective.</p>
+      <span class="tiny-dot"></span>
+      {workspaceLabel}
+      <p>
+        {workspace === 'vps'
+          ? 'Saved observations collected on the VPS.'
+          : authenticatedHosting
+            ? 'Saved observations uploaded from your laptop.'
+            : 'Signals from your code. A little more perspective.'}
+      </p>
     </div>
     <div class="sidebar-footer">
-      Go <span>↔</span> Python <span>↔</span> Svelte<small>Dashboard v0.3.0</small>
+      Go <span>↔</span> Python <span>↔</span> Svelte<small>Dashboard v0.4.0</small>
     </div>
   </aside>
 
   <main id="main">
     <header class="topbar">
-      <span>Workspace <span class="slash">/</span> <strong>Overview</strong></span><span
-        class:online={health?.status === 'ok'}
-        class="connection"
+      <span
+        >Workspace <span class="slash">/</span> <strong>{sectionNames[activeSection]}</strong></span
+      ><span class:online={health?.status === 'ok'} class="connection"
         ><span class="tiny-dot"></span>{health
           ? `API v${health.version} connected`
           : loading
             ? 'Connecting to API'
             : 'API unavailable'}</span
       >
+      <ThemeToggle />
     </header>
     <div class="content" id="overview">
+      {#if workspaces.length > 1}
+        <label class="workspace-select"
+          >Workspace
+          <select
+            bind:value={workspace}
+            onchange={selectWorkspace}
+            disabled={loading || generating}
+          >
+            {#each workspaces as item}<option value={item.id}>{item.label}</option>{/each}
+          </select>
+        </label>
+      {/if}
       {#if authenticatedHosting}
-        <section class="panel" style="padding: 16px; margin-bottom: 20px">
+        <section class="panel access-notice" aria-label="Your workspace access">
           <strong>{accessRole === 'admin' ? 'Admin access' : 'Viewer access'}</strong>
           <p>
             {!onboarded
@@ -268,14 +392,25 @@
           disabled={!canManage || loading || generating}
           ><span aria-hidden="true" class:spinning={loading}>↻</span>{loading
             ? 'Refreshing…'
-            : 'Refresh view'}</button
+            : 'Reload saved data'}</button
         >
       </section>
       <div class="snapshot-strip">
         <span class="tiny-dot"></span><span
-          >Latest saved scan <strong>{date(snapshot?.scanned_at)}</strong></span
+          >{workspace === 'vps'
+            ? 'Latest VPS scan'
+            : authenticatedHosting
+              ? 'Latest uploaded scan'
+              : 'Latest saved scan'} <strong>{date(snapshot?.scanned_at)}</strong></span
         ><code title={snapshot?.root}>{snapshot?.root ?? 'Waiting for workspace data'}</code>
       </div>
+      <p class="freshness-hint">
+        {workspace === 'vps'
+          ? 'VPS observations are collected every five minutes. Reload saved data to read the latest scan.'
+          : authenticatedHosting
+            ? 'New repositories appear after a fresh laptop scan and upload.'
+            : 'Reloading reads saved observations. Collect a new scan to include new repositories.'}
+      </p>
       <div class="sr-only" role="status" aria-live="polite">
         {loading ? 'Loading workspace data' : `Showing ${visible.length} repositories`}
       </div>
@@ -512,7 +647,7 @@
         </details>
       </section>
       <footer>
-        <span>ASafariM Observatory <span class="footer-separator">/</span> Dashboard v0.3.0</span
+        <span>ASafariM Observatory <span class="footer-separator">/</span> Dashboard v0.4.0</span
         ><span
           >Saved data · {refreshed
             ? `View refreshed ${refreshed.toLocaleTimeString()}`
