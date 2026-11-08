@@ -12,3 +12,5 @@ __pycache__/
 node_modules/
 dashboard/.svelte-kit/
 dashboard/build/
+dashboard/test-results/
+dashboard/playwright-report/

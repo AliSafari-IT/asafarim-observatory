@@ -1,0 +1,12 @@
+{
+  "repository": "AliSafari-IT/asafarim-os",
+  "commit": "b102f6f252bf616864e142292ccafd7aacedb0d1",
+  "package": "@asafarim/theme",
+  "version": "0.1.1",
+  "note": "Unchanged framework-independent package assets. Existing upstream license is vendor/asafarim-os.LICENSE.",
+  "sha256": {
+    "theme.js": "6e224fbeca1188b778bde7660a2dc8cffac3a219d1b242051c0be96027ff26a6",
+    "theme.css": "194006484fdb39d1650681e501af733508e07fce7c78f25412b121579724f516",
+    "toggle.html": "e29cd6bcb02278174dd40073b646db003f2163b0dc199f11fdef1a0d5ee11e98"
+  }
+}

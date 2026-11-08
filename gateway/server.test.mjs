@@ -230,3 +230,116 @@ test("viewer cannot invoke paid actions or review requests; admin needs CSRF and
     access.close();
   }
 });
+
+test("workspace IDs route to isolated private APIs; paths and disabled workspaces are refused", async () => {
+  const { AccessStore } = await import("./access.mjs");
+  const access = new AccessStore(":memory:");
+  const seen = [];
+  const backends = [];
+  for (const [port, id] of [
+    [8085, "local"],
+    [8086, "vps"],
+  ]) {
+    const backend = http.createServer((req, res) => {
+      seen.push({ id, url: req.url, method: req.method });
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ workspace: id }));
+    });
+    await new Promise((resolve) => backend.listen(port, "127.0.0.1", resolve));
+    backends.push(backend);
+  }
+  const auth = {
+    ...fake(),
+    require: async () => ({
+      view: { identityKey: { sub: "fixture" } },
+      csrf: "csrf",
+    }),
+    runtime: { verifyCsrf: (_session, token) => assert.equal(token, "csrf") },
+  };
+  const profile = async () => ({
+    email: "fixture@example.test",
+    reviewer: true,
+  });
+  const gateway = createGateway({
+    auth,
+    origin,
+    access,
+    profile,
+    vpsEnabled: true,
+  });
+  await new Promise((resolve) => gateway.listen(0, "127.0.0.1", resolve));
+  const url = "http://127.0.0.1:" + gateway.address().port;
+  const headers = {
+    host: "observatory.example.test",
+    origin,
+    "x-csrf-token": "csrf",
+  };
+  try {
+    assert.equal(
+      (await (await fetch(url + "/api/snapshot", { headers })).json())
+        .workspace,
+      "local",
+    );
+    assert.equal(
+      (
+        await (
+          await fetch(url + "/api/snapshot?workspace=vps", { headers })
+        ).json()
+      ).workspace,
+      "vps",
+    );
+    assert.equal(
+      (
+        await (
+          await fetch(url + "/api/summary?workspace=vps", {
+            method: "POST",
+            headers,
+          })
+        ).json()
+      ).workspace,
+      "vps",
+    );
+    assert.equal(
+      (await fetch(url + "/api/snapshot?workspace=/etc", { headers })).status,
+      400,
+    );
+    assert.equal(
+      (
+        await fetch(url + "/api/snapshot?workspace=vps&workspace=local", {
+          headers,
+        })
+      ).status,
+      400,
+    );
+    assert.deepEqual(seen, [
+      { id: "local", url: "/api/snapshot", method: "GET" },
+      { id: "vps", url: "/api/snapshot", method: "GET" },
+      { id: "vps", url: "/api/summary", method: "POST" },
+    ]);
+    const context = await (
+      await fetch(url + "/auth/context", { headers })
+    ).json();
+    assert.deepEqual(
+      context.workspaces.map((w) => w.id),
+      ["local", "vps"],
+    );
+  } finally {
+    await new Promise((resolve) => gateway.close(resolve));
+    for (const backend of backends)
+      await new Promise((resolve) => backend.close(resolve));
+    access.close();
+  }
+  const disabled = await start({
+    ...fake(),
+    require: async () => ({ csrf: "csrf" }),
+  });
+  try {
+    assert.equal(
+      (await fetch(disabled.url + "/api/snapshot?workspace=vps", { headers }))
+        .status,
+      400,
+    );
+  } finally {
+    await new Promise((resolve) => disabled.server.close(resolve));
+  }
+});

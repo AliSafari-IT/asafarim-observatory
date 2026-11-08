@@ -28,10 +28,11 @@ export function createGateway({
   upstream = "http://127.0.0.1:8085",
   access,
   profile = identityProfile,
+  vpsEnabled = false,
 }) {
   const expected = new URL(origin);
-  const target = new URL(upstream);
-  if (target.origin !== "http://127.0.0.1:8085")
+  const primary = new URL(upstream);
+  if (primary.origin !== "http://127.0.0.1:8085")
     throw new Error("Invalid private API origin");
   const send = (res, status, body, type = "text/html; charset=utf-8") => {
     res.writeHead(status, {
@@ -51,7 +52,7 @@ export function createGateway({
         JSON.stringify({
           status: "ok",
           version: "0.2.2",
-          gateway_version: "0.1.0",
+          gateway_version: "0.2.0",
         }),
         "application/json",
       );
@@ -124,6 +125,25 @@ export function createGateway({
           ),
         );
       }
+      const requestUrl = new URL(req.url, origin);
+      const workspace = requestUrl.searchParams.get("workspace") ?? "local";
+      if (
+        pathname.startsWith("/api/") &&
+        (requestUrl.searchParams.getAll("workspace").length > 1 ||
+          !["local", ...(vpsEnabled ? ["vps"] : [])].includes(workspace))
+      ) {
+        return send(
+          res,
+          400,
+          JSON.stringify({ error: { message: "Unknown workspace." } }),
+          "application/json",
+        );
+      }
+      const target =
+        workspace === "vps" && pathname.startsWith("/api/")
+          ? new URL("http://127.0.0.1:8086")
+          : primary;
+      requestUrl.searchParams.delete("workspace");
       const subject = session.view?.identityKey.sub;
       let context;
       // Provider roles are checked live for every access-management or privileged action.
@@ -144,6 +164,10 @@ export function createGateway({
           200,
           JSON.stringify({
             authenticated: true,
+            workspaces: [
+              { id: "local", label: "Laptop workspace" },
+              ...(vpsEnabled ? [{ id: "vps", label: "VPS workspace" }] : []),
+            ],
             csrf: session.csrf,
             ...context,
           }),
@@ -233,7 +257,7 @@ export function createGateway({
         {
           hostname: target.hostname,
           port: target.port,
-          path: req.url,
+          path: requestUrl.pathname + requestUrl.search,
           method: req.method,
           headers,
           timeout: 70000,
@@ -391,32 +415,51 @@ async function main() {
     auth,
     origin: process.env.OBSERVATORY_ORIGIN,
     access,
+    vpsEnabled: process.env.OBSERVATORY_VPS_WORKSPACE === "true",
   });
   server.requestTimeout = 75000;
   server.headersTimeout = 10000;
   const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-  const child = spawn(
-    resolve(root, "bin/observatory-api"),
-    process.argv.slice(2),
-    { cwd: root, stdio: "inherit", env: process.env },
+  const commands = [process.argv.slice(2)];
+  if (process.env.OBSERVATORY_VPS_WORKSPACE === "true")
+    commands.push([
+      ...process.argv.slice(2),
+      "-addr",
+      "127.0.0.1:8086",
+      "-root",
+      "/var/repos",
+      "-history",
+      "/data/vps-history",
+    ]);
+  const children = commands.map((args) =>
+    spawn(resolve(root, "bin/observatory-api"), args, {
+      cwd: root,
+      stdio: "inherit",
+      env: process.env,
+    }),
   );
-  child.on("error", () => {
-    console.error("Private API failed to start");
-    process.exit(1);
-  });
-  child.on("exit", (code) => {
-    server.close();
-    redis.disconnect();
-    process.exit(code ?? 1);
-  });
+  for (const child of children) {
+    child.on("error", () => {
+      for (const running of children) running.kill("SIGTERM");
+      console.error("Private API failed to start");
+      process.exit(1);
+    });
+    child.on("exit", (code) => {
+      server.close();
+      redis.disconnect();
+      for (const running of children)
+        if (running !== child) running.kill("SIGTERM");
+      process.exit(code ?? 1);
+    });
+  }
   server.listen(8080, "0.0.0.0", () =>
     console.log(
-      "Observatory authenticated gateway 0.1.0 listening on port 8080",
+      "Observatory authenticated gateway 0.2.0 listening on port 8080",
     ),
   );
   const stop = () => {
     server.close();
-    child.kill("SIGTERM");
+    for (const child of children) child.kill("SIGTERM");
     setTimeout(() => process.exit(1), 6000).unref();
   };
   process.on("SIGTERM", stop);

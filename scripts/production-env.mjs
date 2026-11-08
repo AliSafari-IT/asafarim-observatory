@@ -11,6 +11,7 @@ const permitted = new Set([
   "OPENAI_API_KEY",
   "OBSERVATORY_OPENAI_MODEL",
   "OBSERVATORY_AUTH_ENABLED",
+  "OBSERVATORY_VPS_WORKSPACE",
   "OBSERVATORY_ORIGIN",
   "OBSERVATORY_ISSUER",
   "OBSERVATORY_CLIENT_ID",
@@ -36,6 +37,11 @@ export function parseProductionEnv(text) {
       "Enter OPENAI_API_KEY in the local .env.prod file before encrypting.",
     );
   }
+  if (
+    values.OBSERVATORY_VPS_WORKSPACE &&
+    !["true", "false"].includes(values.OBSERVATORY_VPS_WORKSPACE)
+  )
+    throw new Error("Invalid VPS workspace flag");
   return values;
 }
 
