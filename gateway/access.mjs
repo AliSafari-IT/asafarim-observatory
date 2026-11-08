@@ -100,13 +100,21 @@ export class AccessStore {
       .all();
   }
   decide(actor, id, decision, reason) {
+    if (!["approved", "declined", "revoked"].includes(decision))
+      throw new AccessError(400, "Choose a valid decision.");
+    const note =
+      typeof reason === "string" ? reason.trim() : reason == null ? "" : null;
     if (
-      !["approved", "declined", "revoked"].includes(decision) ||
-      !text(reason, 10, 2000)
+      note === null ||
+      (decision === "declined"
+        ? !text(note, 10, 2000)
+        : note !== "" && !text(note, 1, 2000))
     )
       throw new AccessError(
         400,
-        "Choose a decision and give a reason (10–2000 characters).",
+        decision === "declined"
+          ? "Give a rejection reason (10–2000 characters)."
+          : "An optional note must be at most 2000 characters.",
       );
     this.db.exec("BEGIN IMMEDIATE");
     try {
@@ -132,7 +140,7 @@ export class AccessStore {
         .prepare(
           "UPDATE requests SET status=?,decision_reason=?,reviewer=?,decided_at=? WHERE id=?",
         )
-        .run(decision, reason.trim(), actor, now, id);
+        .run(decision, note || null, actor, now, id);
       this.db
         .prepare("UPDATE profiles SET role=? WHERE subject=?")
         .run(decision === "approved" ? "admin" : "viewer", r.subject);
@@ -149,7 +157,7 @@ export class AccessStore {
           .prepare(
             "INSERT INTO notifications(id,recipient,reason,next_at) VALUES(?,?,?,?)",
           )
-          .run(id, r.email, reason.trim(), now);
+          .run(id, r.email, note, now);
       }
       this.db.exec("COMMIT");
     } catch (error) {

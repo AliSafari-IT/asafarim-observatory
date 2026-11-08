@@ -142,3 +142,45 @@ test("verified provider profile required; forged subjects and unverified email r
     store.close();
   }
 });
+
+test("approval and revocation need no reason; decline requires a valid reason and preserves audit", () => {
+  const store = new AccessStore(":memory:");
+  try {
+    store.profile("applicant", "applicant@example.test");
+    store.request(
+      "applicant",
+      "I maintain the workspace and need admin tools.",
+    );
+    const id = store.list()[0].id;
+    for (const reason of [null, "", "too short"])
+      assert.throws(() => store.decide("reviewer", id, "declined", reason), {
+        status: 400,
+      });
+    assert.equal(store.list()[0].status, "pending");
+    assert.throws(
+      () => store.decide("reviewer", id, "approved", "x".repeat(2001)),
+      { status: 400 },
+    );
+    store.decide("reviewer", id, "approved", null);
+    assert.equal(store.context("applicant", false).role, "admin");
+    assert.equal(store.list()[0].decision_reason, null);
+    assert.equal(store.list()[0].reviewer, "reviewer");
+    assert.ok(store.list()[0].decided_at);
+    assert.equal(
+      store.db.prepare("SELECT count(*) AS n FROM audit").get().n,
+      1,
+    );
+    store.decide("reviewer", id, "revoked", "");
+    assert.equal(store.context("applicant", false).role, "viewer");
+    assert.equal(
+      store.db.prepare("SELECT count(*) AS n FROM audit").get().n,
+      2,
+    );
+    assert.equal(
+      store.db.prepare("SELECT count(*) AS n FROM notifications").get().n,
+      0,
+    );
+  } finally {
+    store.close();
+  }
+});
