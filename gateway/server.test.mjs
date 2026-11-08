@@ -343,3 +343,32 @@ test("workspace IDs route to isolated private APIs; paths and disabled workspace
     await new Promise((resolve) => disabled.server.close(resolve));
   }
 });
+
+test("only fixed shared theme assets are public; private pages still require sign-in", async () => {
+  const { server, url } = await start(fake());
+  try {
+    const headers = { host: "observatory.example.test" };
+    for (const name of ["theme.js", "theme.css"]) {
+      const response = await fetch(url + "/asafarim-theme/" + name, {
+        headers,
+      });
+      assert.equal(response.status, 200);
+      assert.match(
+        response.headers.get("content-type"),
+        name.endsWith(".js") ? /javascript/ : /text\/css/,
+      );
+    }
+    assert.equal(
+      (await fetch(url + "/asafarim-theme/provenance.json", { headers }))
+        .status,
+      303,
+    );
+    assert.equal((await fetch(url + "/access", { headers })).status, 303);
+    const login = await (await fetch(url + "/login", { headers })).text();
+    assert.match(login, /aria-label="Observatory navigation"/);
+    assert.match(login, /data-theme-toggle/);
+    assert.match(login, /Footer navigation/);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});

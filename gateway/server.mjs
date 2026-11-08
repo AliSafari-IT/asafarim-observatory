@@ -9,6 +9,7 @@ import Redis from "ioredis";
 import { createHmac } from "node:crypto";
 import { AccessStore, AccessError, identityProfile } from "./access.mjs";
 import { accessPage, formBody } from "./access-pages.mjs";
+import { page, themeAsset } from "./page.mjs";
 import { SmtpClient } from "./smtp.ts";
 
 const escape = (value) =>
@@ -19,8 +20,6 @@ const escape = (value) =>
         character
       ],
   );
-const page = (title, content) =>
-  `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(title)} · Observatory</title><style>body{margin:0;background:#11171c;color:#e3e8e9;font:16px system-ui;min-height:100vh;display:grid;place-items:center}main{max-width:760px;margin:24px;padding:32px;border:1px solid #35434b;border-radius:12px;background:#171f25}p{line-height:1.7;color:#aebbc4}a,button{display:inline-block;background:#7fd5ba;color:#11171c;border:0;border-radius:6px;padding:12px 18px;font:inherit;cursor:pointer;text-decoration:none}form{margin-top:18px}textarea{display:block;width:100%;box-sizing:border-box;margin:12px 0;padding:12px;font:inherit}article{border-top:1px solid #35434b;margin-top:24px;padding-top:12px}button{margin-top:8px}small{color:#93a1ad}a:focus-visible,button:focus-visible{outline:3px solid #e9ba70;outline-offset:4px}</style><main><small>ASafariM OBSERVATORY</small><h1>${escape(title)}</h1>${content}</main></html>`;
 
 export function createGateway({
   auth,
@@ -52,7 +51,7 @@ export function createGateway({
         JSON.stringify({
           status: "ok",
           version: "0.2.2",
-          gateway_version: "0.2.1",
+          gateway_version: "0.2.2",
         }),
         "application/json",
       );
@@ -72,6 +71,14 @@ export function createGateway({
       req.headers.origin !== origin
     )
       return send(res, 403, "Origin check failed.", "text/plain");
+    const publicAsset = themeAsset(pathname);
+    if (publicAsset && ["GET", "HEAD"].includes(req.method))
+      return send(
+        res,
+        200,
+        req.method === "HEAD" ? "" : publicAsset.body,
+        publicAsset.type,
+      );
     try {
       if (await auth.handle(req, res)) return;
       if (pathname === "/login") {
@@ -454,7 +461,7 @@ async function main() {
   }
   server.listen(8080, "0.0.0.0", () =>
     console.log(
-      "Observatory authenticated gateway 0.2.1 listening on port 8080",
+      "Observatory authenticated gateway 0.2.2 listening on port 8080",
     ),
   );
   const stop = () => {
