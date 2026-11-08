@@ -169,3 +169,39 @@ test('review approval needs no reason and rejection retains native validation', 
   await decline.locator('textarea').fill('Admin tools are restricted to workspace maintainers.');
   expect(await decline.evaluate((form: HTMLFormElement) => form.checkValidity())).toBe(true);
 });
+
+test('gateway access pages share navigation, footer and persisted themes at mobile width', async ({
+  page
+}) => {
+  const { page: render, themeAsset } = await import('../../gateway/page.mjs');
+  const html = render(
+    'Your Observatory access',
+    '<p>Your role: viewer.</p><form><label>Reason<textarea required></textarea></label><button>Submit</button></form>'
+  );
+  await page.route('**/asafarim-theme/*', (route) => {
+    const asset = themeAsset(new URL(route.request().url()).pathname);
+    return route.fulfill({ body: asset.body, contentType: asset.type });
+  });
+  await page.route('http://127.0.0.1:5174/access', (route) =>
+    route.fulfill({ body: html, contentType: 'text/html' })
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/access');
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Observatory navigation' })
+      .getByRole('link', { name: 'Access', exact: true })
+  ).toHaveAttribute('aria-current', 'page');
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Footer navigation' })
+      .getByRole('link', { name: 'Privacy' })
+  ).toBeVisible();
+  const toggle = page.getByRole('button', { name: 'Dark theme', exact: true });
+  await toggle.click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await page.reload();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect(render('<script>fixture</script>', '')).not.toContain('<title><script>');
+});
