@@ -58,13 +58,18 @@ export interface AISummaryState {
 // This request is deliberately separate from readJSON: paid POSTs are never retried.
 export async function generateSummary(
   signal: AbortSignal,
-  fetcher: typeof fetch = fetch
+  fetcher: typeof fetch = fetch,
+  csrf = ''
 ): Promise<AISummaryState> {
   const response = await fetcher('/api/summary', {
     method: 'POST',
     signal,
     cache: 'no-store',
-    headers: { 'Content-Type': 'application/json', 'X-Observatory-Request': 'generate-summary' },
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Observatory-Request': 'generate-summary',
+      ...(csrf ? { 'X-CSRF-Token': csrf } : {})
+    },
     body: '{}'
   });
   const body = await response.json();

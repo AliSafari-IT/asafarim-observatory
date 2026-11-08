@@ -28,6 +28,39 @@
   let aiState = $state<AISummaryState | null>(null);
   let aiError = $state('');
   let generating = $state(false);
+  let authenticatedHosting = $state(false);
+  let accessRole = $state('viewer');
+  let canReview = $state(false);
+  let onboarded = $state(true);
+  let csrf = $state('');
+  const canManage = $derived(!authenticatedHosting || accessRole === 'admin');
+  async function checkSession() {
+    try {
+      const response = await fetch('/auth/context', { cache: 'no-store' });
+      if (response.ok) {
+        const context = await response.json();
+        authenticatedHosting = true;
+        accessRole = context.role;
+        canReview = context.canReview;
+        onboarded = context.onboarded;
+        csrf = context.csrf;
+      } else if (authenticatedHosting && [401, 403].includes(response.status))
+        location.assign('/login');
+      else if (authenticatedHosting && response.status >= 500) {
+        snapshot = null;
+        analysis = null;
+        aiState = null;
+        snapshotError =
+          'Your session could not be verified. Refresh after the identity service recovers.';
+      }
+    } catch {
+      if (authenticatedHosting) {
+        snapshot = null;
+        analysis = null;
+        aiState = null;
+      }
+    }
+  }
 
   const repositories = $derived(snapshot?.repositories ?? []);
   const changed = $derived(
@@ -99,13 +132,13 @@
   }
 
   async function generate() {
-    if (generating || loading) return;
+    if (!canManage || generating || loading) return;
     generating = true;
     aiError = '';
     summaryController = new AbortController();
     const timer = setTimeout(() => summaryController?.abort(), 70_000);
     try {
-      aiState = await generateSummary(summaryController.signal);
+      aiState = await generateSummary(summaryController.signal, fetch, csrf);
     } catch (error) {
       aiError =
         error instanceof APIError
@@ -117,9 +150,35 @@
     }
   }
 
+  async function refreshAction() {
+    if (!canManage) return;
+    if (authenticatedHosting) {
+      const result = await fetch('/api/refresh', {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': csrf }
+      });
+      if (!result.ok) {
+        snapshotError = 'Admin access is required or your session needs refreshing.';
+        await checkSession();
+        return;
+      }
+    }
+    await refresh();
+  }
+
   onMount(() => {
-    void refresh();
+    void (async () => {
+      await checkSession();
+      await refresh();
+    })();
+    const poll = setInterval(() => void checkSession(), 60_000);
+    const foreground = () => {
+      if (document.visibilityState === 'visible') void checkSession();
+    };
+    document.addEventListener('visibilitychange', foreground);
     return () => {
+      clearInterval(poll);
+      document.removeEventListener('visibilitychange', foreground);
       controller?.abort();
       summaryController?.abort();
     };
@@ -152,13 +211,16 @@
         <small>{snapshot ? repositories.length : '—'}</small></a
       >
       <a href="#history"><span aria-hidden="true">◷</span> Saved history</a>
+      {#if authenticatedHosting}<a href="/account"
+          ><span aria-hidden="true">◎</span> Account &amp; sign out</a
+        >{/if}
     </nav>
     <div class="sidebar-note">
       <span class="tiny-dot"></span> Local workspace
       <p>Signals from your code.<br />A little more perspective.</p>
     </div>
     <div class="sidebar-footer">
-      Go <span>↔</span> Python <span>↔</span> Svelte<small>Dashboard v0.2.1</small>
+      Go <span>↔</span> Python <span>↔</span> Svelte<small>Dashboard v0.3.0</small>
     </div>
   </aside>
 
@@ -175,13 +237,35 @@
       >
     </header>
     <div class="content" id="overview">
+      {#if authenticatedHosting}
+        <section class="panel" style="padding: 16px; margin-bottom: 20px">
+          <strong>{accessRole === 'admin' ? 'Admin access' : 'Viewer access'}</strong>
+          <p>
+            {!onboarded
+              ? 'Welcome! You can browse immediately. Choose viewer access or request admin tools.'
+              : accessRole === 'viewer'
+                ? 'Browse saved observations and summaries. Admin approval unlocks refresh and generation.'
+                : 'You can refresh saved data and generate AI summaries.'}
+          </p>
+          <a href="/access"
+            >{canReview
+              ? 'Manage access and review requests'
+              : !onboarded
+                ? 'Choose your role'
+                : 'Your role and requests'}</a
+          >
+        </section>
+      {/if}
       <section class="page-heading">
         <div>
           <div class="eyebrow">YOUR DEVELOPMENT LANDSCAPE</div>
           <h1>Workspace overview<span>.</span></h1>
           <p>A clear view of your repositories, one saved snapshot at a time.</p>
         </div>
-        <button class="refresh" onclick={refresh} disabled={loading || generating}
+        <button
+          class="refresh"
+          onclick={refreshAction}
+          disabled={!canManage || loading || generating}
           ><span aria-hidden="true" class:spinning={loading}>↻</span>{loading
             ? 'Refreshing…'
             : 'Refresh view'}</button
@@ -314,7 +398,7 @@
         summaryState={aiState}
         error={aiError}
         {generating}
-        disabled={loading || !snapshot}
+        disabled={!canManage || loading || !snapshot}
         onGenerate={generate}
       />
 
@@ -428,7 +512,7 @@
         </details>
       </section>
       <footer>
-        <span>ASafariM Observatory <span class="footer-separator">/</span> Dashboard v0.2.1</span
+        <span>ASafariM Observatory <span class="footer-separator">/</span> Dashboard v0.3.0</span
         ><span
           >Saved data · {refreshed
             ? `View refreshed ${refreshed.toLocaleTimeString()}`
