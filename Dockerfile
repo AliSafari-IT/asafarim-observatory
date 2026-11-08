@@ -13,7 +13,9 @@ COPY go.mod ./
 COPY api api
 COPY repository repository
 COPY cmd/observatory-api cmd/observatory-api
-RUN CGO_ENABLED=0 go build -trimpath -o /out/observatory-api ./cmd/observatory-api
+COPY cmd/observatory-receive cmd/observatory-receive
+RUN CGO_ENABLED=0 go build -trimpath -o /out/observatory-api ./cmd/observatory-api \
+    && CGO_ENABLED=0 go build -trimpath -o /out/observatory-receive ./cmd/observatory-receive
 
 FROM node:24-bookworm-slim AS dependencies
 WORKDIR /app
@@ -29,6 +31,7 @@ WORKDIR /app
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY --from=dashboard /source/dashboard/build ./dashboard/build
 COPY --from=api /out/observatory-api ./bin/observatory-api
+COPY --from=api /out/observatory-receive ./bin/observatory-receive
 COPY analysis ./analysis
 COPY scripts/production-env.mjs ./scripts/production-env.mjs
 ENV PYTHONDONTWRITEBYTECODE=1
