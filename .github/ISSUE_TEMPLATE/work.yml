@@ -1,0 +1,32 @@
+name: Engineering work
+description: Define a problem and acceptance criteria before implementation.
+title: ""
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and intended behavior
+      description: What concrete problem are we solving, for whom, and why?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and architecture
+      description: Boundaries, dependencies, alternatives or decisions; link private handbook/ADR paths where needed. Include exclusions when they matter.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Observable outcomes that establish completion.
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation and release considerations
+      description: Relevant tests, permission/failure paths, version bumps, data/configuration changes, deployment and rollback needs.
+    validations:
+      required: true

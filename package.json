@@ -15,7 +15,8 @@
     "env:encrypt": "node scripts/production-env.mjs encrypt",
     "api:prod": "node scripts/production-env.mjs start",
     "test:env": "node --test scripts/production-env.test.mjs",
-    "test:gateway": "node --test gateway/*.test.mjs"
+    "test:gateway": "node --test gateway/*.test.mjs",
+    "test:workflow": "node --test scripts/check-issue.test.mjs"
   },
   "dependencies": {
     "@asafarim/auth-runtime": "file:vendor/asafarim-auth-runtime-0.1.0.tgz",
