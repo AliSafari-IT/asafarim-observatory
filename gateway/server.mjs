@@ -52,7 +52,7 @@ export function createGateway({
         JSON.stringify({
           status: "ok",
           version: "0.2.2",
-          gateway_version: "0.2.0",
+          gateway_version: "0.2.1",
         }),
         "application/json",
       );
@@ -454,7 +454,7 @@ async function main() {
   }
   server.listen(8080, "0.0.0.0", () =>
     console.log(
-      "Observatory authenticated gateway 0.2.0 listening on port 8080",
+      "Observatory authenticated gateway 0.2.1 listening on port 8080",
     ),
   );
   const stop = () => {

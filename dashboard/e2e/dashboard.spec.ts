@@ -142,3 +142,30 @@ test('viewers can change workspace and read data while admin actions stay disabl
   );
   expect(calls).toEqual([]);
 });
+
+test('review approval needs no reason and rejection retains native validation', async ({
+  page
+}) => {
+  const { accessPage } = await import('../../gateway/access-pages.mjs');
+  await page.setContent(
+    accessPage({ role: 'admin', canReview: true, onboarded: true }, 'csrf-fixture', [
+      {
+        id: 'fixture-request',
+        email: 'fixture@example.test',
+        status: 'pending',
+        reason: 'Testing review forms.',
+        created_at: 0
+      }
+    ])
+  );
+  const approve = page
+    .locator('form')
+    .filter({ has: page.getByRole('button', { name: 'Approve admin', exact: true }) });
+  const decline = page
+    .locator('form')
+    .filter({ has: page.getByRole('button', { name: 'Decline and email reason', exact: true }) });
+  expect(await approve.evaluate((form: HTMLFormElement) => form.checkValidity())).toBe(true);
+  expect(await decline.evaluate((form: HTMLFormElement) => form.checkValidity())).toBe(false);
+  await decline.locator('textarea').fill('Admin tools are restricted to workspace maintainers.');
+  expect(await decline.evaluate((form: HTMLFormElement) => form.checkValidity())).toBe(true);
+});
