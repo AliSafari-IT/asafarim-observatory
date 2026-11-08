@@ -1,0 +1,12 @@
+.git
+.age
+.env*
+**/.env*
+.observatory
+node_modules
+**/node_modules
+dashboard/.svelte-kit
+dashboard/build
+bin
+**/__pycache__
+*.log

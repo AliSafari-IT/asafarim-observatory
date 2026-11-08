@@ -29,6 +29,7 @@ func run() error {
 	history := flag.String("history", ".observatory/snapshots", "saved snapshot history directory")
 	analyzer := flag.String("analyzer", "analysis/analyze.py", "Python analyzer script")
 	python := flag.String("python", "python3", "Python executable")
+	dashboard := flag.String("dashboard", "", "optional built dashboard directory to serve on the API origin")
 	timeout := flag.Duration("timeout", 10*time.Second, "analysis deadline")
 	summaryTimeout := flag.Duration("summary-timeout", 60*time.Second, "AI summary generation deadline")
 	version := flag.Bool("version", false, "print version and exit")
@@ -49,6 +50,14 @@ func run() error {
 	handler, err := api.New(api.Config{Root: *root, History: *history, Analyzer: *analyzer, Python: *python, Timeout: *timeout, SummaryTimeout: *summaryTimeout})
 	if err != nil {
 		return err
+	}
+	if *dashboard != "" {
+		var closeDashboard func() error
+		handler, closeDashboard, err = api.WithDashboard(handler, *dashboard)
+		if err != nil {
+			return err
+		}
+		defer closeDashboard()
 	}
 	listener, err := net.Listen("tcp", *address)
 	if err != nil {
