@@ -14,7 +14,8 @@
     "preview": "vite preview --host 127.0.0.1",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test:browser": "playwright test"
+    "test:browser": "playwright test",
+    "test:uat": "playwright test --config playwright.uat.config.ts"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",
@@ -22,6 +23,7 @@
     "@sveltejs/kit": "3.1.1",
     "@sveltejs/vite-plugin-svelte": "7.3.1",
     "@types/node": "^24.0.0",
+    "axe-core": "4.10.3",
     "prettier": "^3.9.10",
     "prettier-plugin-svelte": "^4.1.1",
     "svelte": "5.57.3",
