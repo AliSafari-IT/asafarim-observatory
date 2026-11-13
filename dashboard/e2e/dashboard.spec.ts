@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-async function fixtures(page: Page, role = 'admin') {
+async function fixtures(page: Page, role = 'admin', context: Record<string, unknown> = {}) {
   const calls: string[] = [];
   await page.route('**/auth/context', (route) =>
     route.fulfill({
@@ -13,12 +13,13 @@ async function fixtures(page: Page, role = 'admin') {
         workspaces: [
           { id: 'local', label: 'Laptop workspace' },
           { id: 'vps', label: 'VPS workspace' }
-        ]
+        ],
+        ...context
       }
     })
   );
   await page.route('**/healthz', (route) =>
-    route.fulfill({ json: { status: 'ok', version: '0.2.2' } })
+    route.fulfill({ json: { status: 'ok', version: '0.3.0' } })
   );
   await page.route('**/api/**', (route) => {
     const url = new URL(route.request().url());
@@ -142,6 +143,41 @@ test('viewers can change workspace and read data while admin actions stay disabl
     true
   );
   expect(calls).toEqual([]);
+});
+
+test('anonymous visitors see the public laptop workspace read-only, without VPS', async ({
+  page
+}) => {
+  const calls = await fixtures(page, 'anonymous', {
+    authenticated: false,
+    canReview: false,
+    csrf: '',
+    workspaces: [{ id: 'local', label: 'Laptop workspace' }]
+  });
+  await page.goto('/?workspace=vps#repositories');
+  await expect(page.getByText('local-repo-18', { exact: true })).toBeVisible();
+  await expect(page.getByText('vps-repo-3', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('combobox', { name: 'Workspace', exact: true })).toHaveCount(0);
+  const notice = page.getByRole('region', { name: 'Your workspace access' });
+  await expect(notice).toContainText('Public view');
+  await expect(notice.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login');
+  await expect(page.getByRole('link', { name: 'Account & sign out' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Generate summary', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Reload saved data', exact: true })).toBeDisabled();
+  expect(calls).toEqual([]);
+});
+
+test('a signed-in account that is not active sees only the laptop workspace', async ({ page }) => {
+  await fixtures(page, 'viewer', {
+    active: false,
+    workspaces: [{ id: 'local', label: 'Laptop workspace' }]
+  });
+  await page.goto('/?workspace=vps#repositories');
+  await expect(page.getByText('local-repo-18', { exact: true })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Workspace', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Your workspace access' })).toContainText(
+    'Account not active'
+  );
 });
 
 test('review approval needs no reason and rejection retains native validation', async ({

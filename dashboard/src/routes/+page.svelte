@@ -51,6 +51,8 @@
   let accessRole = $state('viewer');
   let canReview = $state(false);
   let onboarded = $state(true);
+  let signedIn = $state(false);
+  let activeAccount = $state(false);
   let csrf = $state('');
   const canManage = $derived(!authenticatedHosting || accessRole === 'admin');
   async function checkSession() {
@@ -59,11 +61,16 @@
       if (response.ok) {
         const context = await response.json();
         authenticatedHosting = true;
-        accessRole = context.role;
-        canReview = context.canReview;
-        onboarded = context.onboarded;
-        csrf = context.csrf;
-        if (context.workspaces?.length) workspaces = context.workspaces;
+        // Anonymous visitors get the public laptop workspace only; VPS needs an active account.
+        signedIn = context.authenticated !== false;
+        activeAccount = signedIn && context.active !== false;
+        accessRole = context.role ?? 'viewer';
+        canReview = context.canReview === true;
+        onboarded = context.onboarded !== false;
+        csrf = context.csrf ?? '';
+        workspaces = context.workspaces?.length
+          ? context.workspaces
+          : [{ id: 'local', label: 'Laptop workspace' }];
         if (!contextLoaded) {
           const selected = new URL(location.href).searchParams.get('workspace');
           if (workspaces.some((item) => item.id === selected)) workspace = selected as WorkspaceID;
@@ -129,6 +136,7 @@
       : 'Cannot reach the local API. Start observatory-api, then refresh.';
   }
 
+  let lostWorkspace = false;
   async function refresh(force = false) {
     if (!force && (loading || generating)) return;
     loading = true;
@@ -150,6 +158,11 @@
       missingHistory =
         s.status === 'rejected' && s.reason instanceof APIError && s.reason.status === 404;
       if (s.status === 'fulfilled') snapshot = s.value;
+      lostWorkspace =
+        requestedWorkspace === 'vps' &&
+        s.status === 'rejected' &&
+        s.reason instanceof APIError &&
+        [401, 403].includes(s.reason.status);
       if (a.status === 'fulfilled') analysis = a.value;
       if (ai.status === 'fulfilled') {
         aiState = ai.value;
@@ -164,6 +177,19 @@
     } finally {
       clearTimeout(timer);
       if (controller === currentController) loading = false;
+    }
+    if (lostWorkspace) {
+      lostWorkspace = false;
+      await returnToPublicWorkspace();
+    }
+  }
+
+  // Signed out or deactivated while viewing the VPS workspace: fall back to the public one.
+  async function returnToPublicWorkspace() {
+    await checkSession();
+    if (workspace !== 'local' && !workspaces.some((item) => item.id === workspace)) {
+      workspace = 'local';
+      await selectWorkspace();
     }
   }
 
@@ -325,8 +351,10 @@
         onclick={() => (activeSection = 'history')}
         ><span aria-hidden="true">◷</span> Saved history</a
       >
-      {#if authenticatedHosting}<a href="/account"
+      {#if authenticatedHosting && signedIn}<a href="/account"
           ><span aria-hidden="true">◎</span> Account &amp; sign out</a
+        >{:else if authenticatedHosting}<a href="/login"
+          ><span aria-hidden="true">◎</span> Sign in</a
         >{/if}
     </nav>
     <div class="sidebar-note">
@@ -341,7 +369,7 @@
       </p>
     </div>
     <div class="sidebar-footer">
-      Go <span>↔</span> Python <span>↔</span> Svelte<small>Dashboard v0.4.1</small>
+      Go <span>↔</span> Python <span>↔</span> Svelte<small>Dashboard v0.5.0</small>
     </div>
   </aside>
 
@@ -371,7 +399,25 @@
           </select>
         </label>
       {/if}
-      {#if authenticatedHosting}
+      {#if authenticatedHosting && !signedIn}
+        <section class="panel access-notice" aria-label="Your workspace access">
+          <strong>Public view</strong>
+          <p>
+            You are viewing the public laptop workspace, read-only. Sign in with an active ASafariM
+            account to also view the VPS workspace.
+          </p>
+          <a href="/login">Sign in</a>
+        </section>
+      {:else if authenticatedHosting && !activeAccount}
+        <section class="panel access-notice" aria-label="Your workspace access">
+          <strong>Account not active</strong>
+          <p>
+            Your ASafariM account is not active, so only the public laptop workspace is shown. An
+            ASafariM administrator can activate it.
+          </p>
+          <a href="/account">Account &amp; sign out</a>
+        </section>
+      {:else if authenticatedHosting}
         <section class="panel access-notice" aria-label="Your workspace access">
           <strong>{accessRole === 'admin' ? 'Admin access' : 'Viewer access'}</strong>
           <p>
@@ -682,7 +728,7 @@
         </details>
       </section>
       <footer>
-        <span>ASafariM Observatory <span class="footer-separator">/</span> Dashboard v0.4.1</span
+        <span>ASafariM Observatory <span class="footer-separator">/</span> Dashboard v0.5.0</span
         ><span
           >Saved data · {refreshed
             ? `View refreshed ${refreshed.toLocaleTimeString()}`

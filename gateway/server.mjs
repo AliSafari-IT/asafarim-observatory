@@ -50,8 +50,8 @@ export function createGateway({
         200,
         JSON.stringify({
           status: "ok",
-          version: "0.2.2",
-          gateway_version: "0.2.2",
+          version: "0.3.0",
+          gateway_version: "0.3.0",
         }),
         "application/json",
       );
@@ -89,54 +89,69 @@ export function createGateway({
           200,
           page(
             "Your workspace, in perspective.",
-            `<p>Sign in with your ASafariM account to view saved workspace observations and AI summaries. Every registered ASafariM account has viewer access. Admin tools require approval.</p><a href="${escape(auth.startUrl({ returnTo: "/" }))}">Sign in with ASafariM</a>`,
-          ),
-        );
-      }
-      let session;
-      try {
-        session = await auth.require(req);
-      } catch (error) {
-        if (error?.status === 401) {
-          if (pathname.startsWith("/api/") || pathname === "/auth/context")
-            return send(
-              res,
-              401,
-              JSON.stringify({
-                error: {
-                  code: "sign_in_required",
-                  message: "Sign in to continue.",
-                },
-              }),
-              "application/json",
-            );
-          res.writeHead(303, { location: "/login" });
-          res.end();
-          return;
-        }
-        if (error?.status === 403)
-          return send(
-            res,
-            403,
-            page(
-              "Access is restricted.",
-              "<p>Your account does not have access to this private workspace.</p>",
-            ),
-          );
-        return send(
-          res,
-          503,
-          page(
-            "Sign-in service unavailable.",
-            "<p>Access could not be verified. Try again shortly.</p>",
+            `<p>The laptop workspace is public: <a href="/">open the dashboard</a> without an account. Sign in with an active ASafariM account to also view the VPS workspace. Every active account has viewer access. Admin tools require approval.</p><a href="${escape(auth.startUrl({ returnTo: "/" }))}">Sign in with ASafariM</a>`,
           ),
         );
       }
       const requestUrl = new URL(req.url, origin);
-      const workspace = requestUrl.searchParams.get("workspace") ?? "local";
+      const workspaces = requestUrl.searchParams.getAll("workspace");
+      const workspace = workspaces[0] ?? "local";
+      const api = pathname.startsWith("/api/");
+      const vpsRequest = api && workspace === "vps";
+      // The dashboard and the local workspace are public and read-only. Account pages, every
+      // action and the VPS workspace still need a signed-in, active ASafariM account.
+      const publicRead =
+        ["GET", "HEAD"].includes(req.method) &&
+        pathname !== "/account" &&
+        !pathname.startsWith("/access") &&
+        (!api || (workspaces.length <= 1 && workspace === "local"));
+      let session = null;
+      try {
+        session = await auth.require(req);
+      } catch (error) {
+        if (!publicRead) {
+          if (error?.status === 401) {
+            if (api || pathname === "/auth/context")
+              return send(
+                res,
+                401,
+                JSON.stringify({
+                  error: {
+                    code: "sign_in_required",
+                    message: vpsRequest
+                      ? "Sign in with an active ASafariM account to view the VPS workspace."
+                      : "Sign in to continue.",
+                  },
+                }),
+                "application/json",
+              );
+            res.writeHead(303, { location: "/login" });
+            res.end();
+            return;
+          }
+          if (error?.status === 403)
+            return send(
+              res,
+              403,
+              page(
+                "Access is restricted.",
+                "<p>Your account does not have access to this private workspace.</p>",
+              ),
+            );
+          return send(
+            res,
+            503,
+            page(
+              "Sign-in service unavailable.",
+              "<p>Access could not be verified. Try again shortly.</p>",
+            ),
+          );
+        }
+        // A public read continues anonymously, even while the identity service is unavailable.
+      }
       if (
-        pathname.startsWith("/api/") &&
-        (requestUrl.searchParams.getAll("workspace").length > 1 ||
+        api &&
+        (workspaces.length > 1 ||
           !["local", ...(vpsEnabled ? ["vps"] : [])].includes(workspace))
       ) {
         return send(
@@ -146,24 +161,66 @@ export function createGateway({
           "application/json",
         );
       }
-      const target =
-        workspace === "vps" && pathname.startsWith("/api/")
-          ? new URL("http://127.0.0.1:8086")
-          : primary;
+      const target = vpsRequest ? new URL("http://127.0.0.1:8086") : primary;
       requestUrl.searchParams.delete("workspace");
-      const subject = session.view?.identityKey.sub;
+      if (!session && pathname === "/auth/context")
+        return send(
+          res,
+          200,
+          JSON.stringify({
+            authenticated: false,
+            role: "anonymous",
+            canReview: false,
+            onboarded: true,
+            request: null,
+            csrf: "",
+            workspaces: [{ id: "local", label: "Laptop workspace" }],
+          }),
+          "application/json",
+        );
+      const subject = session?.view?.identityKey.sub;
       let context;
-      // Provider roles are checked live for every access-management or privileged action.
+      let active = false;
+      // The account is checked live with the identity service for the VPS workspace and for every
+      // access-management or privileged action. It refuses an account deactivated in the
+      // ASafariM admin panel, so a deactivation applies on the next request.
       if (
-        access &&
-        (pathname === "/auth/context" ||
-          pathname === "/account" ||
-          pathname.startsWith("/access") ||
-          req.method === "POST")
+        session &&
+        (vpsRequest ||
+          pathname === "/auth/context" ||
+          (access &&
+            (pathname === "/account" ||
+              pathname.startsWith("/access") ||
+              req.method === "POST")))
       ) {
-        const info = await profile(session);
-        access.profile(subject, info.email);
-        context = access.context(subject, info.reviewer);
+        let info;
+        try {
+          info = await profile(session);
+          active = true;
+        } catch (error) {
+          if (vpsRequest)
+            return send(
+              res,
+              error?.status === 401 || error?.status === 403 ? 403 : 503,
+              JSON.stringify({
+                error: {
+                  code: "active_account_required",
+                  message:
+                    error?.status === 401 || error?.status === 403
+                      ? "The VPS workspace is available to active ASafariM accounts only."
+                      : "Your account could not be verified. Try again shortly.",
+                },
+              }),
+              "application/json",
+            );
+          if (pathname !== "/auth/context") throw error;
+        }
+        if (access) {
+          if (info) access.profile(subject, info.email);
+          context = access.context(subject, info?.reviewer ?? false);
+          // An unverified account browses the public workspace only, whatever its stored role.
+          if (!info) context.role = "viewer";
+        }
       }
       if (pathname === "/auth/context")
         return send(
@@ -171,9 +228,12 @@ export function createGateway({
           200,
           JSON.stringify({
             authenticated: true,
+            active,
             workspaces: [
               { id: "local", label: "Laptop workspace" },
-              ...(vpsEnabled ? [{ id: "vps", label: "VPS workspace" }] : []),
+              ...(vpsEnabled && active
+                ? [{ id: "vps", label: "VPS workspace" }]
+                : []),
             ],
             csrf: session.csrf,
             ...context,
@@ -461,7 +521,7 @@ async function main() {
   }
   server.listen(8080, "0.0.0.0", () =>
     console.log(
-      "Observatory authenticated gateway 0.2.2 listening on port 8080",
+      "Observatory authenticated gateway 0.3.0 listening on port 8080",
     ),
   );
   const stop = () => {
