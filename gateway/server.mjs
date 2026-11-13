@@ -52,6 +52,7 @@ export function createGateway({
           status: "ok",
           version: "0.3.0",
           gateway_version: "0.3.0",
+          revision: process.env.OBSERVATORY_BUILD_REVISION ?? "unknown",
         }),
         "application/json",
       );

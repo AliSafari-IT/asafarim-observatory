@@ -27,6 +27,7 @@ COPY vendor vendor
 RUN pnpm install --prod --frozen-lockfile --ignore-scripts
 
 FROM node:24-bookworm-slim
+ARG OBSERVATORY_BUILD_REVISION=unknown
 RUN apt-get update && apt-get install -y --no-install-recommends python3 ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
@@ -38,6 +39,8 @@ COPY --from=api /out/observatory-receive ./bin/observatory-receive
 COPY analysis ./analysis
 COPY scripts/production-env.mjs ./scripts/production-env.mjs
 COPY gateway ./gateway
+ENV OBSERVATORY_BUILD_REVISION=$OBSERVATORY_BUILD_REVISION
+LABEL org.opencontainers.image.revision=$OBSERVATORY_BUILD_REVISION
 ENV PYTHONDONTWRITEBYTECODE=1
 USER node
 # The Go API remains loopback-only; the optional authenticated gateway listens on 8080.
