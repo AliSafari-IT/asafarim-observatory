@@ -5,6 +5,7 @@ export interface Repository {
   detached: boolean;
   changed_files: number;
   error?: string;
+  worktree_group?: string;
 }
 
 export interface Snapshot {
@@ -151,4 +152,36 @@ export function statusOf(repo: Repository): string {
 export type WorkspaceID = 'local' | 'vps';
 export function workspaceURL(path: string, workspace: WorkspaceID): string {
   return workspace === 'vps' ? `${path}?workspace=vps` : path;
+}
+
+export function groupWorktrees(repositories: Repository[]): Repository[][] {
+  const groups = new Map<string, Repository[]>();
+  for (const repo of repositories) {
+    const key = repo.worktree_group ? `git:${repo.worktree_group}` : `checkout:${repo.name}`;
+    const group = groups.get(key) ?? [];
+    group.push(repo);
+    groups.set(key, group);
+  }
+  return [...groups.values()];
+}
+
+export function snapshotAttention(
+  snapshot: Snapshot | null,
+  now: number,
+  staleAfterMs: number
+): string[] {
+  if (!snapshot) return ['No saved snapshot is available. Collect and upload a scan.'];
+  const time = Date.parse(snapshot.scanned_at);
+  const items: string[] = [];
+  if (!Number.isFinite(time) || time > now + 300_000)
+    items.push('The snapshot timestamp is invalid or in the future.');
+  else if (now - time > staleAfterMs)
+    items.push('This snapshot is stale. Collect and upload a new scan.');
+  const failed = snapshot.repositories.filter((repo) => repo.error).length;
+  const changed = snapshot.repositories.filter(
+    (repo) => !repo.error && repo.changed_files > 0
+  ).length;
+  if (failed) items.push(`${failed} checkout(s) could not be scanned.`);
+  if (changed) items.push(`${changed} checkout(s) had uncommitted changes at the last scan.`);
+  return items;
 }

@@ -16,7 +16,7 @@ import (
 	"github.com/AliSafari-IT/asafarim-observatory/repository"
 )
 
-const Version = "0.2.2"
+const Version = "0.2.3"
 
 type Config struct {
 	Root           string

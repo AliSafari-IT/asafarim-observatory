@@ -4,6 +4,7 @@ package repository
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"os"
@@ -26,12 +27,13 @@ type Snapshot struct {
 // rename counts as one change. Ignored files are excluded.
 // An Error means the other fields must not be treated as a complete result.
 type Repository struct {
-	Name         string `json:"name"`
-	Path         string `json:"path"`
-	Branch       string `json:"branch"`
-	Detached     bool   `json:"detached"`
-	ChangedFiles int    `json:"changed_files"`
-	Error        string `json:"error,omitempty"`
+	Name          string `json:"name"`
+	Path          string `json:"path"`
+	Branch        string `json:"branch"`
+	Detached      bool   `json:"detached"`
+	ChangedFiles  int    `json:"changed_files"`
+	Error         string `json:"error,omitempty"`
+	WorktreeGroup string `json:"worktree_group,omitempty"`
 }
 
 // Scan inspects only direct children with a .git directory or worktree file.
@@ -88,6 +90,16 @@ func inspect(ctx context.Context, path, name string) Repository {
 		repo.Branch = "(detached)"
 	} else {
 		repo.Branch = strings.TrimSpace(string(branch))
+	}
+	// The common Git directory identifies linked worktrees without transmitting its path.
+	if common, err := git(ctx, path, "rev-parse", "--git-common-dir"); err == nil {
+		commonPath := strings.TrimSpace(string(common))
+		if !filepath.IsAbs(commonPath) {
+			commonPath = filepath.Join(path, commonPath)
+		}
+		if resolved, err := filepath.EvalSymlinks(commonPath); err == nil {
+			repo.WorktreeGroup = fmt.Sprintf("%x", sha256.Sum256([]byte(resolved)))
+		}
 	}
 	status, err := git(ctx, path, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=none")
 	if err != nil {

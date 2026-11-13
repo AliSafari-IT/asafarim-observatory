@@ -30,7 +30,8 @@ async function fixtures(page: Page, role = 'admin') {
       path: `${root}/repo-${index + 1}`,
       branch: 'main',
       detached: false,
-      changed_files: 0
+      changed_files: index === 1 ? 1 : 0,
+      ...(index < 2 ? { worktree_group: 'shared-fixture' } : {})
     }));
     if (route.request().method() === 'POST') calls.push(`${url.pathname}:${workspace}`);
     if (url.pathname === '/api/snapshot')
@@ -204,4 +205,14 @@ test('gateway access pages share navigation, footer and persisted themes at mobi
   await expect(toggle).toHaveAttribute('aria-pressed', 'false');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect(render('<script>fixture</script>', '')).not.toContain('<title><script>');
+});
+
+test('stale observations and linked worktrees are clearly identified', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-11-13T16:00:00Z'));
+  await fixtures(page);
+  await page.goto('/');
+  const attention = page.getByRole('region', { name: 'Needs attention' });
+  await expect(attention.getByText(/snapshot is stale/i)).toBeVisible();
+  await expect(attention.getByText(/uncommitted changes at the last scan/i)).toBeVisible();
+  await expect(page.getByRole('row', { name: /Related worktrees: local-repo-1/ })).toBeVisible();
 });

@@ -3,6 +3,8 @@ import test from 'node:test';
 import {
   APIError,
   filterRepositories,
+  groupWorktrees,
+  snapshotAttention,
   readJSON,
   statusOf,
   generateSummary,
@@ -120,4 +122,32 @@ test('VPS summary generation selects its workspace without retrying or changing 
   }) as typeof fetch;
   await generateSummary(new AbortController().signal, fetcher, 'csrf-fixture', 'vps');
   assert.equal(called, '/api/summary?workspace=vps');
+});
+
+test('groups only checkouts with matching explicit Git identity', () => {
+  const list = [
+    { ...repositories[0], worktree_group: 'a' },
+    { ...repositories[1], worktree_group: 'a' },
+    { ...repositories[2] },
+    { ...repositories[0], name: 'api-copy' }
+  ];
+  assert.deepEqual(
+    groupWorktrees(list).map((group) => group.map((repo) => repo.name)),
+    [['api', 'dashboard'], ['broken'], ['api-copy']]
+  );
+});
+
+test('attention distinguishes stale data, failures and observed changes', () => {
+  const snapshot = {
+    schema_version: 1,
+    root: '/repos',
+    scanned_at: '2026-01-01T00:00:00Z',
+    repositories
+  };
+  const items = snapshotAttention(snapshot, Date.parse('2026-01-03T00:00:00Z'), 86400000);
+  assert.equal(items.length, 3);
+  assert.match(items[0], /stale/);
+  assert.match(items[1], /could not be scanned/);
+  assert.match(items[2], /uncommitted/);
+  assert.match(snapshotAttention(null, 0, 100)[0], /No saved snapshot/);
 });
