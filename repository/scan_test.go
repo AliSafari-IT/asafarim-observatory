@@ -67,7 +67,9 @@ func TestScanRealCheckouts(t *testing.T) {
 	if len(snapshot.Repositories) != 4 {
 		t.Fatalf("expected four repositories, got %+v", snapshot.Repositories)
 	}
+	groups := map[string]string{}
 	for _, repo := range snapshot.Repositories {
+		groups[repo.Name] = repo.WorktreeGroup
 		switch repo.Name {
 		case "active":
 			if repo.Branch != "main" || repo.ChangedFiles != 2 || repo.Error != "" {
@@ -86,6 +88,9 @@ func TestScanRealCheckouts(t *testing.T) {
 				t.Errorf("broken .git marker reported as clean: %+v", repo)
 			}
 		}
+	}
+	if groups["active"] == "" || groups["active"] != groups["linked"] || groups["active"] == groups["empty"] || groups["broken"] != "" {
+		t.Fatalf("incorrect linked-worktree identities: %+v", groups)
 	}
 }
 

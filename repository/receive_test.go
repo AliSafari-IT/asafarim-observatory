@@ -14,7 +14,7 @@ import (
 func TestReceiveRoundTripAndConcurrentRetries(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "sender-root-not-present-on-server")
 	history := t.TempDir()
-	snapshot := Snapshot{1, time.Now().UTC(), root, []Repository{{Name: "app", Path: filepath.Join(root, "app"), Branch: "main", ChangedFiles: 2}}}
+	snapshot := Snapshot{1, time.Now().UTC(), root, []Repository{{Name: "app", Path: filepath.Join(root, "app"), Branch: "main", ChangedFiles: 2, WorktreeGroup: strings.Repeat("a", 64)}}}
 	data, _ := json.Marshal(snapshot)
 	var wg sync.WaitGroup
 	for i := 0; i < 8; i++ {
@@ -39,7 +39,7 @@ func TestReceiveRoundTripAndConcurrentRetries(t *testing.T) {
 		t.Fatal("import permissions are not private")
 	}
 	saved, err := Latest(history, root)
-	if err != nil || saved.Repositories[0].ChangedFiles != 2 {
+	if err != nil || saved.Repositories[0].ChangedFiles != 2 || saved.Repositories[0].WorktreeGroup != strings.Repeat("a", 64) {
 		t.Fatalf("imported snapshot: %+v %v", saved, err)
 	}
 	duplicate, err := Receive(bytes.NewReader(data), root, history)

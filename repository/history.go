@@ -2,6 +2,7 @@ package repository
 
 import (
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -98,6 +99,12 @@ func validateSnapshot(snapshot Snapshot) error {
 	for _, repo := range snapshot.Repositories {
 		if repo.Name == "" || repo.Name == "." || repo.Name == ".." || filepath.Base(repo.Name) != repo.Name || seen[repo.Name] || repo.ChangedFiles < 0 || repo.Path != filepath.Join(snapshot.Root, repo.Name) || (repo.Error == "" && repo.Branch == "") {
 			return errors.New("invalid or duplicate repository in snapshot")
+		}
+		if repo.WorktreeGroup != "" {
+			decoded, err := hex.DecodeString(repo.WorktreeGroup)
+			if err != nil || len(decoded) != sha256.Size || strings.ToLower(repo.WorktreeGroup) != repo.WorktreeGroup {
+				return errors.New("invalid worktree identity")
+			}
 		}
 		seen[repo.Name] = true
 	}

@@ -5,6 +5,8 @@
   import {
     APIError,
     filterRepositories,
+    groupWorktrees,
+    snapshotAttention,
     readJSON,
     generateSummary,
     workspaceURL,
@@ -92,6 +94,14 @@
   const unavailable = $derived(repositories.filter((repo) => repo.error).length);
   const clean = $derived(repositories.length - changed - unavailable);
   const visible = $derived(filterRepositories(repositories, search, filter));
+  const groups = $derived(groupWorktrees(visible));
+  const attention = $derived(
+    snapshotAttention(
+      snapshot,
+      refreshed?.getTime() ?? Date.now(),
+      workspace === 'vps' ? 30 * 60_000 : 24 * 60 * 60_000
+    )
+  );
   const summaries = $derived(
     new Map(analysis?.repositories.map((repo) => [repo.name, repo]) ?? [])
   );
@@ -331,7 +341,7 @@
       </p>
     </div>
     <div class="sidebar-footer">
-      Go <span>↔</span> Python <span>↔</span> Svelte<small>Dashboard v0.4.0</small>
+      Go <span>↔</span> Python <span>↔</span> Svelte<small>Dashboard v0.4.1</small>
     </div>
   </aside>
 
@@ -429,6 +439,24 @@
             >{/if}
         </div>
       {/if}
+
+      <section class="panel access-notice" aria-labelledby="attention-heading">
+        <h2 id="attention-heading">Needs attention</h2>
+        <p>
+          Based on the saved scan from {date(snapshot?.scanned_at)}. Reloading reads saved data; it
+          does not scan this machine.
+        </p>
+        {#if attention.length}
+          <ul>
+            {#each attention as item}<li>{item}</li>{/each}
+          </ul>
+          <p>
+            {workspace === 'vps'
+              ? 'Check the VPS collection schedule and upload service.'
+              : 'Run the local collector with -save and upload the resulting snapshot using observatory-upload.'}
+          </p>
+        {:else}<p>No issues detected in the latest saved scan.</p>{/if}
+      </section>
 
       <section class="stats" aria-label="Latest saved snapshot totals">
         <div class="stat">
@@ -569,51 +597,58 @@
                 ></tr
               ></thead
             ><tbody>
-              {#each visible as repo}
-                <tr
-                  ><td
-                    ><button
-                      class="repo-button"
-                      aria-expanded={expanded === repo.name}
-                      onclick={() => (expanded = expanded === repo.name ? null : repo.name)}
-                      ><span class="repo-icon" aria-hidden="true">⌘</span><span>{repo.name}</span
-                      ><span class="expand-icon" aria-hidden="true"
-                        >{expanded === repo.name ? '−' : '+'}</span
-                      ></button
-                    ></td
-                  ><td><span class="branch">{repo.branch || 'Unknown'}</span></td><td
-                    ><span class:amber={!repo.error && repo.changed_files > 0} class="file-count"
-                      >{repo.error ? '?' : repo.changed_files}</span
-                    ></td
-                  ><td
-                    ><span
-                      class="status-pill"
-                      class:dirty={!repo.error && repo.changed_files > 0}
-                      class:failed={Boolean(repo.error)}
-                      ><span class="tiny-dot"></span>{statusOf(repo)}</span
-                    ></td
-                  ><td class="history-cell"
-                    >{#if summaries.has(repo.name)}{summaries.get(repo.name)?.observations} observations{:else}—{/if}</td
-                  ></tr
-                >
-                {#if expanded === repo.name}<tr class="detail-row"
-                    ><td colspan="5"
-                      ><div>
-                        <code>{repo.path}</code>{#if repo.error}<p class="inline-error">
-                            {repo.error}
-                          </p>{/if}{#if summaries.get(repo.name)}{@const summary = summaries.get(
-                            repo.name
-                          )!}
-                          <p>
-                            Observed branch switches: <strong
-                              >{summary.observed_branch_switches}</strong
-                            ><span>·</span> Failed observations:
-                            <strong>{summary.failed_observations}</strong><span>·</span> Peak
-                            changed files: <strong>{summary.peak_changed_files ?? '?'}</strong>
-                          </p>{/if}
-                      </div></td
+              {#each groups as group}
+                {#if group.length > 1}<tr
+                    ><th colspan="5" scope="rowgroup"
+                      >Related worktrees: {group[0].name} and {group.length - 1} more</th
                     ></tr
                   >{/if}
+                {#each group as repo}
+                  <tr
+                    ><td
+                      ><button
+                        class="repo-button"
+                        aria-expanded={expanded === repo.name}
+                        onclick={() => (expanded = expanded === repo.name ? null : repo.name)}
+                        ><span class="repo-icon" aria-hidden="true">⌘</span><span>{repo.name}</span
+                        ><span class="expand-icon" aria-hidden="true"
+                          >{expanded === repo.name ? '−' : '+'}</span
+                        ></button
+                      ></td
+                    ><td><span class="branch">{repo.branch || 'Unknown'}</span></td><td
+                      ><span class:amber={!repo.error && repo.changed_files > 0} class="file-count"
+                        >{repo.error ? '?' : repo.changed_files}</span
+                      ></td
+                    ><td
+                      ><span
+                        class="status-pill"
+                        class:dirty={!repo.error && repo.changed_files > 0}
+                        class:failed={Boolean(repo.error)}
+                        ><span class="tiny-dot"></span>{statusOf(repo)}</span
+                      ></td
+                    ><td class="history-cell"
+                      >{#if summaries.has(repo.name)}{summaries.get(repo.name)?.observations} observations{:else}—{/if}</td
+                    ></tr
+                  >
+                  {#if expanded === repo.name}<tr class="detail-row"
+                      ><td colspan="5"
+                        ><div>
+                          <code>{repo.path}</code>{#if repo.error}<p class="inline-error">
+                              {repo.error}
+                            </p>{/if}{#if summaries.get(repo.name)}{@const summary = summaries.get(
+                              repo.name
+                            )!}
+                            <p>
+                              Observed branch switches: <strong
+                                >{summary.observed_branch_switches}</strong
+                              ><span>·</span> Failed observations:
+                              <strong>{summary.failed_observations}</strong><span>·</span> Peak
+                              changed files: <strong>{summary.peak_changed_files ?? '?'}</strong>
+                            </p>{/if}
+                        </div></td
+                      ></tr
+                    >{/if}
+                {/each}
               {/each}
             </tbody>
           </table>
@@ -647,7 +682,7 @@
         </details>
       </section>
       <footer>
-        <span>ASafariM Observatory <span class="footer-separator">/</span> Dashboard v0.4.0</span
+        <span>ASafariM Observatory <span class="footer-separator">/</span> Dashboard v0.4.1</span
         ><span
           >Saved data · {refreshed
             ? `View refreshed ${refreshed.toLocaleTimeString()}`
