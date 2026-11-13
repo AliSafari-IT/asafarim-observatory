@@ -12,7 +12,7 @@ const path = (page: Page) => new URL(page.url()).pathname;
 const SIGN_IN = 'Sign in with ASafariM';
 
 for (const colorScheme of ['dark', 'light'] as const) {
-  test(`UAT-01 a first-time visitor is sent to the sign-in page (${colorScheme})`, async ({
+  test(`UAT-01 a first-time visitor sees the public laptop workspace (${colorScheme})`, async ({
     browser,
     baseURL
   }) => {
@@ -22,10 +22,18 @@ for (const colorScheme of ['dark', 'light'] as const) {
     });
     const page = await context.newPage();
     const response = await page.goto('/');
-    expect(path(page)).toBe('/login');
+    expect(path(page)).toBe('/');
     expect(response?.status()).toBe(200);
     expect(page.url().startsWith(baseURL!)).toBe(true);
-    await page.screenshot({ path: shot(`desktop-${colorScheme}`, '01-sign-in'), fullPage: true });
+    const notice = page.getByRole('region', { name: 'Your workspace access' });
+    await expect(notice).toContainText('Public view');
+    await expect(notice.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login');
+    await expect(page.getByRole('combobox', { name: 'Workspace', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Generate summary', exact: true })).toBeDisabled();
+    await page.screenshot({
+      path: shot(`desktop-${colorScheme}`, '01-public-dashboard'),
+      fullPage: true
+    });
     await context.close();
   });
 }
@@ -73,10 +81,16 @@ test('UAT-03 sign in hands over to the ASafariM sign-in with a safe OpenID Conne
 test('UAT-04 deep links to private pages send a signed-out visitor to sign in', async ({
   page
 }) => {
-  for (const target of ['/access', '/account', '/?workspace=vps', '/some/old/bookmark']) {
+  for (const target of ['/access', '/account']) {
     await page.goto(target);
     expect(path(page), target).toBe('/login');
   }
+  // A VPS link opens the public laptop workspace instead of VPS data.
+  await page.goto('/?workspace=vps');
+  expect(path(page)).toBe('/');
+  await expect(page.getByRole('region', { name: 'Your workspace access' })).toContainText(
+    'Public view'
+  );
 });
 
 test('UAT-05 the theme toggle switches, announces its state and remembers it', async ({
@@ -194,7 +208,7 @@ test('UAT-09 every link a signed-out visitor can see leads somewhere that works'
   }
 });
 
-test('UAT-10 signed out, the API refuses data clearly and health stays public', async ({
+test('UAT-10 signed out, local data and health are public; VPS and actions are refused', async ({
   request
 }) => {
   const health = await request.get('/healthz');
@@ -205,10 +219,21 @@ test('UAT-10 signed out, the API refuses data clearly and health stays public', 
   expect(
     Object.keys(body).every((key) => ['status', 'version', 'gateway_version'].includes(key))
   ).toBe(true);
-  for (const endpoint of ['/api/snapshot', '/api/analysis', '/api/summary', '/auth/context']) {
+  for (const endpoint of ['/api/snapshot', '/api/analysis', '/api/summary']) {
     const response = await request.get(endpoint, { maxRedirects: 0 });
-    expect(response.status(), endpoint).toBe(401);
-    expect((await response.json()).error?.code, endpoint).toBe('sign_in_required');
+    expect(response.status(), endpoint).toBeLessThan(500);
+    expect(response.status(), endpoint).not.toBe(401);
+  }
+  const context = await (await request.get('/auth/context')).json();
+  expect(context.authenticated).toBe(false);
+  expect(context.workspaces.map((w: { id: string }) => w.id)).toEqual(['local']);
+  for (const endpoint of ['/api/snapshot?workspace=vps', '/api/summary?workspace=vps']) {
+    const response = await request.get(endpoint, { maxRedirects: 0 });
+    expect([400, 401], endpoint).toContain(response.status());
+  }
+  for (const endpoint of ['/api/refresh', '/api/summary']) {
+    const response = await request.post(endpoint, { maxRedirects: 0, data: {} });
+    expect([401, 403], endpoint).toContain(response.status());
   }
 });
 
