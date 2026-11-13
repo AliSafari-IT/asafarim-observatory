@@ -142,7 +142,15 @@ test("anonymous visitors read the local workspace but not the VPS workspace, act
     const html = await login.text();
     assert.match(html, /Sign in with ASafariM/);
     assert.match(html, /laptop workspace is public/);
-    assert.equal((await fetch(url + "/healthz")).status, 200);
+    const health = await fetch(url + "/healthz");
+    assert.equal(health.status, 200);
+    const body = await health.json();
+    assert.equal(body.status, "ok");
+    assert.equal(body.gateway_version, "0.3.0");
+    assert.equal(
+      body.revision,
+      process.env.OBSERVATORY_BUILD_REVISION ?? "unknown",
+    );
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
